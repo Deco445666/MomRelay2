@@ -1,4 +1,4 @@
-name: Build MomRelay Final v3
+name: Build MomRelay Final v4
 on: [push, workflow_dispatch]
 
 jobs:
@@ -13,12 +13,14 @@ jobs:
 
       - name: Setup & Inject Code
         run: |
+          # 1. CLEAN START
+          rm -rf app settings.gradle build.gradle gradle.properties
           wget https://github.com/feedvay/android-hello-world/archive/refs/heads/master.zip -O project.zip
           unzip project.zip
           mv android-hello-world-master/* .
           rm -rf android-hello-world-master project.zip
 
-          # MANIFEST
+          # 2. MANIFEST (Android 15 Ready)
           cat <<'EOF' > app/src/main/AndroidManifest.xml
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -33,7 +35,7 @@ jobs:
               <application
                   android:allowBackup="true"
                   android:icon="@mipmap/ic_launcher"
-                  android:label="Mom Relay v3"
+                  android:label="Mom Relay v4"
                   android:theme="@style/Theme.AppCompat.Light.NoActionBar">
                   <activity android:name=".MainActivity" android:exported="true">
                       <intent-filter>
@@ -51,7 +53,7 @@ jobs:
           </manifest>
           EOF
 
-          # MAIN ACTIVITY (Now with Input Dialog)
+          # 3. MAIN ACTIVITY (With Pop-up Dialog & Keyword Logic)
           mkdir -p app/src/main/java/com/momrelay
           cat <<'EOF' > app/src/main/java/com/momrelay/MainActivity.kt
           package com.momrelay
@@ -70,24 +72,20 @@ jobs:
               override fun onCreate(s: Bundle?) {
                   super.onCreate(s)
                   
-                  // Main Layout
                   val l = LinearLayout(this).apply { 
                       orientation = LinearLayout.VERTICAL
                       gravity = Gravity.CENTER
                       setPadding(60,60,60,60)
-                      setBackgroundColor(0xFFF0F4F8.toInt())
+                      setBackgroundColor(0xFFFFFFFF.toInt())
                   }
                   
-                  // Title
                   val title = TextView(this).apply {
                       text = "SMS RELAY"
-                      textSize = 28f
+                      textSize = 24f
                       gravity = Gravity.CENTER
-                      setTextColor(0xFF006C70.toInt())
                       setPadding(0, 0, 0, 40)
                   }
                   
-                  // Status Text
                   val status = TextView(this).apply { 
                       text = "Status: Idle"
                       textSize = 16f
@@ -95,124 +93,85 @@ jobs:
                       setPadding(0,0,0,60)
                   }
                   
-                  // The Big Button
                   val btn = Button(this).apply { 
                       text = "CONFIGURE & START" 
                       textSize = 18f
-                      setPadding(40, 20, 40, 20)
                   }
                   
-                  l.addView(title)
-                  l.addView(status)
-                  l.addView(btn)
+                  l.addView(title); l.addView(status); l.addView(btn)
                   setContentView(l)
                   
-                  // Load saved data for display
                   val prefs = getSharedPreferences("Relay", Context.MODE_PRIVATE)
-                  val savedPhone = prefs.getString("PHONE", "Not Set")
-                  val isActive = prefs.getBoolean("ACTIVE", false)
-                  
-                  if(isActive) {
-                      status.text = "ACTIVE\nTarget: $savedPhone"
-                      status.setTextColor(0xFF00C853.toInt()) // Green
+                  if(prefs.getBoolean("ACTIVE", false)) {
+                      status.text = "RUNNING\nTo: " + prefs.getString("PHONE", "")
+                      status.setTextColor(0xFF00C853.toInt())
                       btn.text = "STOP SERVICE"
                   }
 
                   btn.setOnClickListener {
                       if (prefs.getBoolean("ACTIVE", false)) {
-                          // Stop Logic
                           prefs.edit().putBoolean("ACTIVE", false).apply()
                           stopService(Intent(this, RelayService::class.java))
                           status.text = "Status: Stopped"
-                          status.setTextColor(0xFFD32F2F.toInt()) // Red
+                          status.setTextColor(0xFFD32F2F.toInt())
                           btn.text = "CONFIGURE & START"
-                          Toast.makeText(this, "Service Stopped", Toast.LENGTH_SHORT).show()
                       } else {
-                          // Start Logic -> Show Dialog
-                          showConfigDialog(status, btn)
+                          showDialog(status, btn)
                       }
                   }
-                  
-                  // Request permissions immediately on open
                   checkPerms()
               }
 
-              private fun showConfigDialog(statusView: TextView, btnView: Button) {
-                  val context = this
-                  val layout = LinearLayout(context).apply {
+              private fun showDialog(tv: TextView, btn: Button) {
+                  val ctx = this
+                  val layout = LinearLayout(ctx).apply {
                       orientation = LinearLayout.VERTICAL
                       setPadding(50, 40, 50, 10)
                   }
-
                   val prefs = getSharedPreferences("Relay", Context.MODE_PRIVATE)
                   
-                  val inputPhone = EditText(context).apply { 
-                      hint = "Target Phone (+91...)" 
+                  val box1 = EditText(ctx).apply { 
+                      hint = "Phone Number" 
                       setText(prefs.getString("PHONE", ""))
                       inputType = android.text.InputType.TYPE_CLASS_PHONE
                   }
-                  
-                  val inputKeywords = EditText(context).apply { 
-                      hint = "Keywords (OTP, Bank, etc.)" 
+                  val box2 = EditText(ctx).apply { 
+                      hint = "Keywords (Optional)" 
                       setText(prefs.getString("KEYWORDS", ""))
                   }
                   
-                  val helpText = TextView(context).apply {
-                      text = "Leave keywords empty to forward ALL messages."
-                      textSize = 12f
-                      setPadding(0, 10, 0, 0)
-                  }
+                  layout.addView(box1); layout.addView(box2)
 
-                  layout.addView(inputPhone)
-                  layout.addView(inputKeywords)
-                  layout.addView(helpText)
-
-                  AlertDialog.Builder(context)
-                      .setTitle("Setup Forwarding")
+                  AlertDialog.Builder(ctx)
+                      .setTitle("Setup")
                       .setView(layout)
                       .setPositiveButton("START") { _, _ ->
-                          val phone = inputPhone.text.toString().trim()
-                          val keywords = inputKeywords.text.toString().trim()
+                          val ph = box1.text.toString().trim()
+                          val kw = box2.text.toString().trim()
+                          if (ph.length < 3) return@setPositiveButton
                           
-                          if (phone.length < 3) {
-                              Toast.makeText(context, "Invalid Phone Number", Toast.LENGTH_SHORT).show()
-                              return@setPositiveButton
-                          }
+                          prefs.edit().putString("PHONE", ph).putString("KEYWORDS", kw).putBoolean("ACTIVE", true).apply()
                           
-                          // Save Data
-                          prefs.edit()
-                              .putString("PHONE", phone)
-                              .putString("KEYWORDS", keywords)
-                              .putBoolean("ACTIVE", true)
-                              .apply()
-                              
-                          // Start Service
-                          val it = Intent(context, RelayService::class.java)
+                          val it = Intent(ctx, RelayService::class.java)
                           if (Build.VERSION.SDK_INT >= 26) startForegroundService(it) else startService(it)
                           
-                          // Update UI
-                          statusView.text = "ACTIVE\nTarget: $phone"
-                          statusView.setTextColor(0xFF00C853.toInt())
-                          btnView.text = "STOP SERVICE"
-                          Toast.makeText(context, "Service Started!", Toast.LENGTH_SHORT).show()
+                          tv.text = "RUNNING\nTo: " + ph
+                          tv.setTextColor(0xFF00C853.toInt())
+                          btn.text = "STOP SERVICE"
                       }
                       .setNegativeButton("Cancel", null)
                       .show()
               }
 
               private fun checkPerms() {
-                  val perms = mutableListOf(
-                      Manifest.permission.RECEIVE_SMS, 
-                      Manifest.permission.SEND_SMS, 
-                      Manifest.permission.READ_PHONE_STATE
-                  )
-                  if (Build.VERSION.SDK_INT >= 33) perms.add(Manifest.permission.POST_NOTIFICATIONS)
-                  ActivityCompat.requestPermissions(this, perms.toTypedArray(), 101)
+                  val p = mutableListOf(Manifest.permission.RECEIVE_SMS, Manifest.permission.SEND_SMS, Manifest.permission.READ_PHONE_STATE)
+                  if (Build.VERSION.SDK_INT >= 33) p.add(Manifest.permission.POST_NOTIFICATIONS)
+                  ActivityCompat.requestPermissions(this, p.toTypedArray(), 101)
               }
           }
           EOF
 
-          # RELAY SERVICE
+          # 4. RELAY SERVICE (Android 15 Safe)
           cat <<'EOF' > app/src/main/java/com/momrelay/RelayService.kt
           package com.momrelay
           import android.app.*
@@ -224,27 +183,22 @@ jobs:
           class RelayService : Service() {
               override fun onBind(i: Intent?): IBinder? = null
               override fun onStartCommand(i: Intent?, f: Int, s: Int): Int {
-                  try {
-                      if (Build.VERSION.SDK_INT >= 26) {
-                          val c = NotificationChannel("Relay", "Relay Service", NotificationManager.IMPORTANCE_LOW)
-                          getSystemService(NotificationManager::class.java).createNotificationChannel(c)
-                      }
-                      val n = NotificationCompat.Builder(this, "Relay")
-                          .setContentTitle("Mom Relay Active")
-                          .setSmallIcon(android.R.drawable.ic_dialog_email)
-                          .build()
-                      if (Build.VERSION.SDK_INT >= 34) {
-                          startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
-                      } else {
-                          startForeground(1, n)
-                      }
-                  } catch (e: Exception) { e.printStackTrace() }
+                  if (Build.VERSION.SDK_INT >= 26) {
+                      val c = NotificationChannel("Relay", "Relay Service", NotificationManager.IMPORTANCE_LOW)
+                      getSystemService(NotificationManager::class.java).createNotificationChannel(c)
+                  }
+                  val n = NotificationCompat.Builder(this, "Relay").setContentTitle("Mom Relay Active").setSmallIcon(android.R.drawable.ic_dialog_email).build()
+                  if (Build.VERSION.SDK_INT >= 34) {
+                      startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+                  } else {
+                      startForeground(1, n)
+                  }
                   return START_STICKY
               }
           }
           EOF
 
-          # SMS RECEIVER (Updated with Keyword Logic)
+          # 5. SMS RECEIVER (Keyword Filter Logic)
           cat <<'EOF' > app/src/main/java/com/momrelay/SmsReceiver.kt
           package com.momrelay
           import android.content.*
@@ -252,42 +206,28 @@ jobs:
           class SmsReceiver : BroadcastReceiver() {
               override fun onReceive(c: Context, i: Intent) {
                   if (i.action != "android.provider.Telephony.SMS_RECEIVED") return
+                  val p = c.getSharedPreferences("Relay", Context.MODE_PRIVATE)
+                  if (!p.getBoolean("ACTIVE", false)) return
                   
-                  val prefs = c.getSharedPreferences("Relay", Context.MODE_PRIVATE)
-                  if (!prefs.getBoolean("ACTIVE", false)) return
+                  val target = p.getString("PHONE", "") ?: return
+                  val keys = p.getString("KEYWORDS", "") ?: ""
                   
-                  val target = prefs.getString("PHONE", "") ?: return
-                  val rawKeywords = prefs.getString("KEYWORDS", "") ?: ""
-                  
-                  val bundle = i.extras ?: return
-                  val pdus = bundle.get("pdus") as Array<Any>?
+                  val b = i.extras ?: return
+                  val pdus = b.get("pdus") as Array<Any>?
                   val sms = SmsManager.getDefault()
                   
                   pdus?.forEach {
-                      val msg = SmsMessage.createFromPdu(it as ByteArray, bundle.getString("format"))
-                      val body = msg.messageBody ?: ""
-                      
-                      if (shouldSend(body, rawKeywords)) {
-                          try { 
-                              sms.sendTextMessage(target, null, "Fwd: $body", null, null) 
-                          } catch (e: Exception) {}
+                      val m = SmsMessage.createFromPdu(it as ByteArray, b.getString("format"))
+                      val body = m.messageBody ?: ""
+                      if (keys.isEmpty() || keys.split(",").any { k -> k.isNotBlank() && body.lowercase().contains(k.trim().lowercase()) }) {
+                          try { sms.sendTextMessage(target, null, "Fwd: " + body, null, null) } catch (e: Exception) {}
                       }
                   }
-              }
-              
-              private fun shouldSend(body: String, keywords: String): Boolean {
-                  if (keywords.isEmpty()) return true // No keywords = Send All
-                  val keys = keywords.split(",").map { it.trim().lowercase() }
-                  val lowerBody = body.lowercase()
-                  for (k in keys) {
-                      if (k.isNotEmpty() && lowerBody.contains(k)) return true
-                  }
-                  return false
               }
           }
           EOF
 
-          # GRADLE CONFIG
+          # 6. GRADLE CONFIG
           echo "android { namespace 'com.momrelay'; compileSdk 34; defaultConfig { applicationId 'com.momrelay'; minSdk 26; targetSdk 34; versionCode 1; } }" >> app/build.gradle
 
       - name: Build APK
@@ -295,20 +235,5 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: MomRelay-App-v3
+          name: MomRelay-Final-v4
           path: app/build/outputs/apk/debug/app-debug.apk
-
-3. Conclusion & Suggestions
-This updated workflow file (build.yml) replaces the simple Start button with a smart "Configure & Start" button.
-What's new:
- * Pop-up Dialog: When you tap the main button, a dialog box appears.
- * Input Fields: You can type the Phone Number and Keywords (separated by commas) directly in this box.
- * Smart Filtering: The SMS Receiver now checks the message content against your keywords. If the keywords box is empty, it forwards everything. If you type "OTP, Bank", it only forwards messages containing those words.
- * Visual Feedback: The main screen will update to show "ACTIVE" in green and display the target number you set.
-To Apply:
- * Edit .github/workflows/build.yml in your repository.
- * Delete everything and paste the new code above.
- * Commit and wait for the build to finish (Green checkmark).
- * Download the new MomRelay-App-v3 artifact.
-Let me know if you have any questions about using the keywords feature!
-
