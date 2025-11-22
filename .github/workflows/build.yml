@@ -13,21 +13,21 @@ jobs:
           
       - uses: android-actions/setup-android@v3
       
-      - name: FORCE FIX - Generate Clean Configs
+      - name: INJECT CONFIG FILES (Base64 Method)
         run: |
-          # 1. Delete any broken files
+          # Delete old junk
           rm -f settings.gradle build.gradle app/build.gradle
           
-          # 2. Create Root Settings
-          printf "include ':app'" > settings.gradle
+          # 1. Create settings.gradle
+          echo "include ':app'" > settings.gradle
           
-          # 3. Create Root Build File
-          printf "buildscript { repositories { google(); mavenCentral() } dependencies { classpath 'com.android.tools.build:gradle:8.1.1'; classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0' } }\nallprojects { repositories { google(); mavenCentral() } }\ntask clean(type: Delete) { delete rootProject.buildDir }" > build.gradle
+          # 2. Create Root build.gradle (Encoded)
+          echo "YnVpbGRzY3JpcHQgewogICAgcmVwb3NpdG9yaWVzIHsgZ29vZ2xlKCk7IG1hdmVuQ2VudHJhbCgpIH0KICAgIGRlcGVuZGVuY2llcyB7CiAgICAgICAgY2xhc3NwYXRoICdjb20uYW5kcm9pZC50b29scy5idWlsZDpncmFkbGU6OC4xLjEnCiAgICAgICAgY2xhc3NwYXRoICdvcmcuamV0YnJhaW5zLmtvdGxpbjprb3RsaW4tZ3JhZGxlLXBsdWdpbjoxLjkuMCcKICAgIH0KfQphbGxwcm9qZWN0cyB7CiAgICByZXBvc2l0b3JpZXMgeyBnb29nbGUoKTsgbWF2ZW5QY2VudHJhbCgpIH0KfQp0YXNrIGNsZWFuKHR5cGU6IERlbGV0ZSkgewogICAgZGVsZXRlIHJvb3RQcm9qZWN0LmJ1aWxkRGlyCn0=" | base64 -d > build.gradle
           
-          # 4. Create App Build File (The most common failure point)
-          printf "plugins { id 'com.android.application'; id 'org.jetbrains.kotlin.android' }\nandroid { namespace 'com.momrelay'; compileSdk 33; defaultConfig { applicationId 'com.momrelay'; minSdk 24; targetSdk 33; versionCode 1; }; buildFeatures { viewBinding true } }\ndependencies { implementation 'androidx.core:core-ktx:1.9.0'; implementation 'androidx.appcompat:appcompat:1.6.1'; implementation 'com.google.android.material:material:1.8.0'; implementation 'androidx.constraintlayout:constraintlayout:2.1.4' }" > app/build.gradle
+          # 3. Create App build.gradle (Encoded)
+          echo "cGx1Z2lucyB7CiAgICBpZCAnY29tLmFuZHJvaWQuYXBwbGljYXRpb24nCiAgICBpZCAnb3JnLmpldGJyYWlucy5rb3RsaW4uYW5kcm9pZCcKfQphbmRyb2lkIHsKICAgIG5hbWVzcGFjZSAnY29tLm1vbXJlbGF5JwogICAgY29tcGlsZVNkayAzMwogICAgZGVmYXVsdENvbmZpZyB7CiAgICAgICAgYXBwbGljYXRpb25JZCAiY29tLm1vbXJlbGF5IgogICAgICAgIG1pblNkayAyNAogICAgICAgIHRhcmdldFNkayAzMwogICAgICAgIHZlcnNpb25Db2RlIDEKICAgIH0KICAgIGJ1aWxkRmVhdHVyZXMgewogICAgICAgIHZpZXdCaW5kaW5nIHRydWUKICAgIH0KfQpkZXBlbmRlbmNpZXMgewogICAgaW1wbGVtZW50YXRpb24gJ2FuZHJvaWR4LmNvcmU6Y29yZS1rdHg6MS45LjAnCiAgICBpbXBsZW1lbnRhdGlvbiAnYW5kcm9pZHguYXBwY29tcGF0OmFwcGNvbXBhdDoxLjYuMScKICAgIGltcGxlbWVudGF0aW9uICdjb20uZ29vZ2xlLmFuZHJvaWQubWF0ZXJpYWw6bWF0ZXJpYWw6MS44LjAnCiAgICBpbXBsZW1lbnRhdGlvbiAnYW5kcm9pZHguY29uc3RyYWludGxheW91dDpjb25zdHJhaW50bGF5b3V0OjIuMS40Jwp9" | base64 -d > app/build.gradle
 
-      - name: Build with Global Gradle
+      - name: Build APK
         run: gradle assembleDebug --stacktrace --no-daemon
       
       - uses: actions/upload-artifact@v4
