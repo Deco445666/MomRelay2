@@ -13,12 +13,18 @@ jobs:
           
       - uses: android-actions/setup-android@v3
       
-      - name: Fix Missing Files & Build
-        run: |
-          echo "include ':app'" > settings.gradle
-          echo "buildscript { repositories { google(); mavenCentral() } dependencies { classpath 'com.android.tools.build:gradle:8.1.1'; classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0' } } allprojects { repositories { google(); mavenCentral() } }" > build.gradle
-          gradle assembleDebug
-          
+      # Safe Fix Step 1: Create settings.gradle
+      - run: echo "include ':app'" > settings.gradle
+      
+      # Safe Fix Step 2: Create build.gradle (One single line to avoid errors)
+      - run: echo "buildscript { repositories { google(); mavenCentral() } dependencies { classpath 'com.android.tools.build:gradle:8.1.1'; classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0' } } allprojects { repositories { google(); mavenCentral() } }" > build.gradle
+      
+      # Safe Fix Step 3: Make the builder executable
+      - run: chmod +x gradlew || true
+      
+      # Safe Fix Step 4: Build it!
+      - run: gradle assembleDebug
+      
       - uses: actions/upload-artifact@v4
         with:
           name: mom-relay-app
