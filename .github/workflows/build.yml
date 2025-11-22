@@ -13,10 +13,22 @@ jobs:
           
       - uses: android-actions/setup-android@v3
       
-      - name: Build APK
+      - name: FORCE FIX - Generate Clean Configs
         run: |
-          chmod +x gradlew
-          ./gradlew assembleDebug
+          # 1. Delete any broken files
+          rm -f settings.gradle build.gradle app/build.gradle
+          
+          # 2. Create Root Settings
+          printf "include ':app'" > settings.gradle
+          
+          # 3. Create Root Build File
+          printf "buildscript { repositories { google(); mavenCentral() } dependencies { classpath 'com.android.tools.build:gradle:8.1.1'; classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0' } }\nallprojects { repositories { google(); mavenCentral() } }\ntask clean(type: Delete) { delete rootProject.buildDir }" > build.gradle
+          
+          # 4. Create App Build File (The most common failure point)
+          printf "plugins { id 'com.android.application'; id 'org.jetbrains.kotlin.android' }\nandroid { namespace 'com.momrelay'; compileSdk 33; defaultConfig { applicationId 'com.momrelay'; minSdk 24; targetSdk 33; versionCode 1; }; buildFeatures { viewBinding true } }\ndependencies { implementation 'androidx.core:core-ktx:1.9.0'; implementation 'androidx.appcompat:appcompat:1.6.1'; implementation 'com.google.android.material:material:1.8.0'; implementation 'androidx.constraintlayout:constraintlayout:2.1.4' }" > app/build.gradle
+
+      - name: Build with Global Gradle
+        run: gradle assembleDebug --stacktrace --no-daemon
       
       - uses: actions/upload-artifact@v4
         with:
