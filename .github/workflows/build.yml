@@ -13,37 +13,10 @@ jobs:
           
       - uses: android-actions/setup-android@v3
       
-      - name: Create Config Files
-        run: |
-          echo "include ':app'" > settings.gradle
-          
-          # We use 'cat' here to safely write the file without errors
-          cat > build.gradle <<EOF
-          buildscript {
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-              dependencies {
-                  classpath 'com.android.tools.build:gradle:8.0.2'
-                  classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20'
-              }
-          }
-          allprojects {
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-          }
-          task clean(type: Delete) {
-              delete rootProject.buildDir
-          }
-          EOF
-
       - name: Build APK
         run: |
-          chmod +x gradlew || true
-          gradle assembleDebug
+          chmod +x gradlew
+          ./gradlew assembleDebug
       
       - uses: actions/upload-artifact@v4
         with:
