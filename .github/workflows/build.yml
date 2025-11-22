@@ -1,4 +1,4 @@
-name: Build MomRelay Final v4
+name: Build MomRelay From Scratch
 on: [push, workflow_dispatch]
 
 jobs:
@@ -11,16 +11,58 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Setup & Inject Code
+      - name: Generate Project Structure
         run: |
-          # 1. CLEAN START
+          # 1. CLEAN UP
           rm -rf app settings.gradle build.gradle gradle.properties
-          wget https://github.com/feedvay/android-hello-world/archive/refs/heads/master.zip -O project.zip
-          unzip project.zip
-          mv android-hello-world-master/* .
-          rm -rf android-hello-world-master project.zip
+          
+          # 2. CREATE FOLDERS
+          mkdir -p app/src/main/java/com/momrelay
+          mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/res/drawable
 
-          # 2. MANIFEST (Android 15 Ready)
+          # 3. SETTINGS.GRADLE
+          echo "include ':app'" > settings.gradle
+
+          # 4. ROOT BUILD.GRADLE
+          cat <<'EOF' > build.gradle
+          buildscript {
+              repositories { google(); mavenCentral() }
+              dependencies {
+                  classpath 'com.android.tools.build:gradle:8.1.1'
+                  classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0'
+              }
+          }
+          allprojects { repositories { google(); mavenCentral() } }
+          task clean(type: Delete) { delete rootProject.buildDir }
+          EOF
+
+          # 5. APP BUILD.GRADLE
+          cat <<'EOF' > app/build.gradle
+          plugins {
+              id 'com.android.application'
+              id 'org.jetbrains.kotlin.android'
+          }
+          android {
+              namespace 'com.momrelay'
+              compileSdk 34
+              defaultConfig {
+                  applicationId 'com.momrelay'
+                  minSdk 26
+                  targetSdk 34
+                  versionCode 1
+                  versionName "1.0"
+              }
+              buildFeatures { viewBinding true }
+          }
+          dependencies {
+              implementation 'androidx.core:core-ktx:1.12.0'
+              implementation 'androidx.appcompat:appcompat:1.6.1'
+              implementation 'com.google.android.material:material:1.11.0'
+          }
+          EOF
+
+          # 6. MANIFEST (Android 15 Ready)
           cat <<'EOF' > app/src/main/AndroidManifest.xml
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -33,9 +75,7 @@ jobs:
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
               <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
               <application
-                  android:allowBackup="true"
-                  android:icon="@mipmap/ic_launcher"
-                  android:label="Mom Relay v4"
+                  android:label="Mom Relay"
                   android:theme="@style/Theme.AppCompat.Light.NoActionBar">
                   <activity android:name=".MainActivity" android:exported="true">
                       <intent-filter>
@@ -53,8 +93,7 @@ jobs:
           </manifest>
           EOF
 
-          # 3. MAIN ACTIVITY (With Pop-up Dialog & Keyword Logic)
-          mkdir -p app/src/main/java/com/momrelay
+          # 7. MAIN ACTIVITY (Pop-up UI & Logic)
           cat <<'EOF' > app/src/main/java/com/momrelay/MainActivity.kt
           package com.momrelay
           import android.os.Bundle
@@ -78,27 +117,15 @@ jobs:
                       setPadding(60,60,60,60)
                       setBackgroundColor(0xFFFFFFFF.toInt())
                   }
-                  
-                  val title = TextView(this).apply {
-                      text = "SMS RELAY"
-                      textSize = 24f
-                      gravity = Gravity.CENTER
-                      setPadding(0, 0, 0, 40)
-                  }
-                  
                   val status = TextView(this).apply { 
                       text = "Status: Idle"
-                      textSize = 16f
+                      textSize = 18f
                       gravity = Gravity.CENTER
                       setPadding(0,0,0,60)
                   }
+                  val btn = Button(this).apply { text = "CONFIGURE & START" }
                   
-                  val btn = Button(this).apply { 
-                      text = "CONFIGURE & START" 
-                      textSize = 18f
-                  }
-                  
-                  l.addView(title); l.addView(status); l.addView(btn)
+                  l.addView(status); l.addView(btn)
                   setContentView(l)
                   
                   val prefs = getSharedPreferences("Relay", Context.MODE_PRIVATE)
@@ -129,9 +156,8 @@ jobs:
                       setPadding(50, 40, 50, 10)
                   }
                   val prefs = getSharedPreferences("Relay", Context.MODE_PRIVATE)
-                  
                   val box1 = EditText(ctx).apply { 
-                      hint = "Phone Number" 
+                      hint = "Target Phone" 
                       setText(prefs.getString("PHONE", ""))
                       inputType = android.text.InputType.TYPE_CLASS_PHONE
                   }
@@ -139,7 +165,6 @@ jobs:
                       hint = "Keywords (Optional)" 
                       setText(prefs.getString("KEYWORDS", ""))
                   }
-                  
                   layout.addView(box1); layout.addView(box2)
 
                   AlertDialog.Builder(ctx)
@@ -151,7 +176,6 @@ jobs:
                           if (ph.length < 3) return@setPositiveButton
                           
                           prefs.edit().putString("PHONE", ph).putString("KEYWORDS", kw).putBoolean("ACTIVE", true).apply()
-                          
                           val it = Intent(ctx, RelayService::class.java)
                           if (Build.VERSION.SDK_INT >= 26) startForegroundService(it) else startService(it)
                           
@@ -171,7 +195,7 @@ jobs:
           }
           EOF
 
-          # 4. RELAY SERVICE (Android 15 Safe)
+          # 8. RELAY SERVICE (Crash Fix)
           cat <<'EOF' > app/src/main/java/com/momrelay/RelayService.kt
           package com.momrelay
           import android.app.*
@@ -198,7 +222,7 @@ jobs:
           }
           EOF
 
-          # 5. SMS RECEIVER (Keyword Filter Logic)
+          # 9. SMS RECEIVER
           cat <<'EOF' > app/src/main/java/com/momrelay/SmsReceiver.kt
           package com.momrelay
           import android.content.*
@@ -208,14 +232,12 @@ jobs:
                   if (i.action != "android.provider.Telephony.SMS_RECEIVED") return
                   val p = c.getSharedPreferences("Relay", Context.MODE_PRIVATE)
                   if (!p.getBoolean("ACTIVE", false)) return
-                  
                   val target = p.getString("PHONE", "") ?: return
                   val keys = p.getString("KEYWORDS", "") ?: ""
                   
                   val b = i.extras ?: return
                   val pdus = b.get("pdus") as Array<Any>?
                   val sms = SmsManager.getDefault()
-                  
                   pdus?.forEach {
                       val m = SmsMessage.createFromPdu(it as ByteArray, b.getString("format"))
                       val body = m.messageBody ?: ""
@@ -227,13 +249,21 @@ jobs:
           }
           EOF
 
-          # 6. GRADLE CONFIG
-          echo "android { namespace 'com.momrelay'; compileSdk 34; defaultConfig { applicationId 'com.momrelay'; minSdk 26; targetSdk 34; versionCode 1; } }" >> app/build.gradle
+          # 10. PROPERTIES
+          echo "org.gradle.jvmargs=-Xmx2048m" > gradle.properties
+          echo "android.useAndroidX=true" >> gradle.properties
+
+      - name: Setup Gradle 8.2
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.2'
 
       - name: Build APK
-        run: ./gradlew assembleDebug
+        run: gradle assembleDebug
 
       - uses: actions/upload-artifact@v4
         with:
-          name: MomRelay-Final-v4
+          name: MomRelay-FromScratch
           path: app/build/outputs/apk/debug/app-debug.apk
+
+
