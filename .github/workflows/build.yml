@@ -13,17 +13,22 @@ jobs:
           
       - uses: android-actions/setup-android@v3
       
-      # Safe Fix Step 1: Create settings.gradle
-      - run: echo "include ':app'" > settings.gradle
-      
-      # Safe Fix Step 2: Create build.gradle (One single line to avoid errors)
-      - run: echo "buildscript { repositories { google(); mavenCentral() } dependencies { classpath 'com.android.tools.build:gradle:8.1.1'; classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0' } } allprojects { repositories { google(); mavenCentral() } }" > build.gradle
-      
-      # Safe Fix Step 3: Make the builder executable
-      - run: chmod +x gradlew || true
-      
-      # Safe Fix Step 4: Build it!
-      - run: gradle assembleDebug
+      - name: Create settings.gradle
+        run: echo "include ':app'" > settings.gradle
+
+      - name: Create build.gradle
+        run: |
+          echo "buildscript {" > build.gradle
+          echo "  repositories { google(); mavenCentral() }" >> build.gradle
+          echo "  dependencies { classpath 'com.android.tools.build:gradle:8.1.1'; classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0' }" >> build.gradle
+          echo "}" >> build.gradle
+          echo "allprojects { repositories { google(); mavenCentral() } }" >> build.gradle
+
+      - name: Make gradlew executable
+        run: chmod +x gradlew || true
+
+      - name: Build Debug APK
+        run: gradle assembleDebug --stacktrace
       
       - uses: actions/upload-artifact@v4
         with:
