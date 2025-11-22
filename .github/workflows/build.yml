@@ -10,11 +10,16 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
       - uses: android-actions/setup-android@v3
-      - run: echo "include ':app'" > settings.gradle
-      - run: chmod +x gradlew || true
+      
+      # THIS IS THE FIX: We create the missing config files here
+      - name: Create Config Files
+        run: |
+          echo "include ':app'" > settings.gradle
+          echo "buildscript { repositories { google(); mavenCentral() } dependencies { classpath 'com.android.tools.build:gradle:8.0.2'; classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20' } } allprojects { repositories { google(); mavenCentral() } }" > build.gradle
+      
       - run: gradle assembleDebug
+      
       - uses: actions/upload-artifact@v4
         with:
           name: mom-relay-app
           path: app/build/outputs/apk/debug/app-debug.apk
-          
