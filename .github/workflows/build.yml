@@ -11,7 +11,14 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
       
-      # STEP 1: GENERATE FILES (Using Python for 100% Accuracy)
+      # STEP 1: FORCE DOWNGRADE TO GRADLE 8.2.1 (Crucial Fix)
+      - uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.2.1'
+          
+      - uses: android-actions/setup-android@v3
+      
+      # STEP 2: GENERATE FILES (Python - Keeps structure safe)
       - name: Generate Project Files
         run: |
           python3 -c "
@@ -21,52 +28,52 @@ jobs:
           with open('settings.gradle', 'w') as f:
               f.write(\"include ':app'\")
           
-          # 2. Root build.gradle (Standard Config)
-          root_build = \"\"\"
+          # 2. Root build.gradle (Configured for Gradle 8)
+          root_content = \"\"\"
           buildscript {
               repositories { google(); mavenCentral() }
               dependencies {
-                  classpath 'com.android.tools.build:gradle:8.2.0'
-                  classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.20'
+                  classpath 'com.android.tools.build:gradle:8.1.1'
+                  classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0'
               }
           }
           allprojects { repositories { google(); mavenCentral() } }
           task clean(type: Delete) { delete rootProject.buildDir }
           \"\"\"
           with open('build.gradle', 'w') as f:
-              f.write(root_build)
+              f.write(root_content)
               
-          # 3. App build.gradle (SDK 34)
+          # 3. App build.gradle (SDK 33)
           os.makedirs('app', exist_ok=True)
-          app_build = \"\"\"
+          app_content = \"\"\"
           plugins {
               id 'com.android.application'
               id 'org.jetbrains.kotlin.android'
           }
           android {
               namespace 'com.momrelay'
-              compileSdk 34
+              compileSdk 33
               defaultConfig {
                   applicationId 'com.momrelay'
                   minSdk 24
-                  targetSdk 34
+                  targetSdk 33
                   versionCode 1
               }
               buildFeatures { viewBinding true }
           }
           dependencies {
-              implementation 'androidx.core:core-ktx:1.12.0'
+              implementation 'androidx.core:core-ktx:1.9.0'
               implementation 'androidx.appcompat:appcompat:1.6.1'
-              implementation 'com.google.android.material:material:1.11.0'
+              implementation 'com.google.android.material:material:1.8.0'
           }
           \"\"\"
           with open('app/build.gradle', 'w') as f:
-              f.write(app_build)
+              f.write(app_content)
           "
 
-      # STEP 2: BUILD (Using System Default Gradle - No Setup Required)
+      # STEP 3: BUILD
       - name: Build APK
-        run: gradle assembleDebug --no-daemon
+        run: gradle assembleDebug
       
       - uses: actions/upload-artifact@v4
         with:
