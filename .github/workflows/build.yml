@@ -12,19 +12,14 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
           
-      # 1. GENERATE FILES (Simplified Gradle Config)
+      # 1. GENERATE FILES (Using Shell Commands - Robust)
       - name: Generate Project Files
         run: |
-          python3 -c "
-          import os
+          # Create settings.gradle
+          echo "include ':app'" > settings.gradle
           
-          # settings.gradle
-          with open('settings.gradle', 'w') as f:
-              f.write(\"include ':app'\")
-          
-          # Root build.gradle
-          with open('build.gradle', 'w') as f:
-              f.write(\"\"\"
+          # Create Root build.gradle
+          cat <<EOF > build.gradle
           buildscript {
               repositories { google(); mavenCentral() }
               dependencies {
@@ -34,12 +29,11 @@ jobs:
           }
           allprojects { repositories { google(); mavenCentral() } }
           task clean(type: Delete) { delete rootProject.buildDir }
-          \"\"\")
+          EOF
           
-          # App build.gradle (Cleaned up)
-          os.makedirs('app', exist_ok=True)
-          with open('app/build.gradle', 'w') as f:
-              f.write(\"\"\"
+          # Create App build.gradle
+          mkdir -p app
+          cat <<EOF > app/build.gradle
           plugins {
               id 'com.android.application'
               id 'org.jetbrains.kotlin.android'
@@ -51,8 +45,8 @@ jobs:
                   applicationId 'com.momrelay'
                   minSdk 26
                   targetSdk 34
-                  versionCode 6
-                  versionName '6.0'
+                  versionCode 7
+                  versionName '7.0-ShellFix'
               }
               buildFeatures { viewBinding true }
           }
@@ -62,12 +56,12 @@ jobs:
               implementation 'com.google.android.material:material:1.11.0'
               implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
           }
-          \"\"\")
+          EOF
           
-          # Manifest (Android 15 Ready)
-          os.makedirs('app/src/main', exist_ok=True)
-          with open('app/src/main/AndroidManifest.xml', 'w') as f:
-              f.write(\"\"\"<?xml version='1.0' encoding='utf-8'?>
+          # Create Manifest
+          mkdir -p app/src/main
+          cat <<EOF > app/src/main/AndroidManifest.xml
+          <?xml version='1.0' encoding='utf-8'?>
           <manifest xmlns:android='http://schemas.android.com/apk/res/android'
               xmlns:tools='http://schemas.android.com/tools'>
           
@@ -111,12 +105,13 @@ jobs:
                   </receiver>
               </application>
           </manifest>
-          \"\"\")
+          EOF
+          
+          # Create Source Files
+          mkdir -p app/src/main/java/com/momrelay
           
           # MainActivity.kt
-          os.makedirs('app/src/main/java/com/momrelay', exist_ok=True)
-          with open('app/src/main/java/com/momrelay/MainActivity.kt', 'w') as f:
-              f.write(\"\"\"
+          cat <<EOF > app/src/main/java/com/momrelay/MainActivity.kt
           package com.momrelay
           import android.os.Bundle
           import android.widget.*
@@ -171,11 +166,10 @@ jobs:
                   }
               }
           }
-          \"\"\")
+          EOF
 
           # RelayService.kt
-          with open('app/src/main/java/com/momrelay/RelayService.kt', 'w') as f:
-              f.write(\"\"\"
+          cat <<EOF > app/src/main/java/com/momrelay/RelayService.kt
           package com.momrelay
           import android.app.*
           import android.content.Intent
@@ -212,11 +206,10 @@ jobs:
                   }
               }
           }
-          \"\"\")
+          EOF
 
           # SmsReceiver.kt
-          with open('app/src/main/java/com/momrelay/SmsReceiver.kt', 'w') as f:
-              f.write(\"\"\"
+          cat <<EOF > app/src/main/java/com/momrelay/SmsReceiver.kt
           package com.momrelay
           import android.content.BroadcastReceiver
           import android.content.Context
@@ -239,17 +232,16 @@ jobs:
                   pdus?.forEach {
                       val msg = SmsMessage.createFromPdu(it as ByteArray, bundle.getString("format"))
                       try {
-                          sms.sendTextMessage(target, null, "Fwd: ${msg.messageBody}", null, null)
+                          sms.sendTextMessage(target, null, "Fwd: " + msg.messageBody, null, null)
                       } catch (e: Exception) {}
                   }
               }
           }
-          \"\"\")
+          EOF
 
           # gradle.properties
-          with open('gradle.properties', 'w') as f:
-              f.write('org.gradle.jvmargs=-Xmx2048m\\nandroid.useAndroidX=true')
-          "
+          echo "org.gradle.jvmargs=-Xmx2048m" > gradle.properties
+          echo "android.useAndroidX=true" >> gradle.properties
 
       # 2. SETUP GRADLE 8.2
       - name: Setup Gradle
@@ -264,5 +256,5 @@ jobs:
       # 4. UPLOAD
       - uses: actions/upload-artifact@v4
         with:
-          name: MomRelay-App-v6
+          name: MomRelay-App-ShellFix
           path: app/build/outputs/apk/debug/app-debug.apk
