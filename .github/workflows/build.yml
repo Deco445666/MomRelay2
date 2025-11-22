@@ -12,13 +12,16 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
           
-      # 1. GENERATE FILES (Using Shell Commands - Robust)
+      # 1. GENERATE FILES (Clean Slate Method)
       - name: Generate Project Files
         run: |
-          # Create settings.gradle
+          # 1. Clean up any previous run garbage
+          rm -rf app settings.gradle build.gradle gradle.properties
+          
+          # 2. Create settings.gradle
           echo "include ':app'" > settings.gradle
           
-          # Create Root build.gradle
+          # 3. Create Root build.gradle
           cat <<EOF > build.gradle
           buildscript {
               repositories { google(); mavenCentral() }
@@ -31,8 +34,10 @@ jobs:
           task clean(type: Delete) { delete rootProject.buildDir }
           EOF
           
-          # Create App build.gradle
-          mkdir -p app
+          # 4. Create App Directory Structure (Safe Mode)
+          mkdir -p app/src/main/java/com/momrelay
+          
+          # 5. Create App build.gradle
           cat <<EOF > app/build.gradle
           plugins {
               id 'com.android.application'
@@ -45,8 +50,8 @@ jobs:
                   applicationId 'com.momrelay'
                   minSdk 26
                   targetSdk 34
-                  versionCode 7
-                  versionName '7.0-ShellFix'
+                  versionCode 8
+                  versionName '8.0-CleanSlate'
               }
               buildFeatures { viewBinding true }
           }
@@ -58,8 +63,7 @@ jobs:
           }
           EOF
           
-          # Create Manifest
-          mkdir -p app/src/main
+          # 6. Create Manifest (Android 15 Compliant)
           cat <<EOF > app/src/main/AndroidManifest.xml
           <?xml version='1.0' encoding='utf-8'?>
           <manifest xmlns:android='http://schemas.android.com/apk/res/android'
@@ -107,10 +111,7 @@ jobs:
           </manifest>
           EOF
           
-          # Create Source Files
-          mkdir -p app/src/main/java/com/momrelay
-          
-          # MainActivity.kt
+          # 7. Create MainActivity.kt
           cat <<EOF > app/src/main/java/com/momrelay/MainActivity.kt
           package com.momrelay
           import android.os.Bundle
@@ -168,7 +169,7 @@ jobs:
           }
           EOF
 
-          # RelayService.kt
+          # 8. Create RelayService.kt
           cat <<EOF > app/src/main/java/com/momrelay/RelayService.kt
           package com.momrelay
           import android.app.*
@@ -208,7 +209,7 @@ jobs:
           }
           EOF
 
-          # SmsReceiver.kt
+          # 9. Create SmsReceiver.kt
           cat <<EOF > app/src/main/java/com/momrelay/SmsReceiver.kt
           package com.momrelay
           import android.content.BroadcastReceiver
@@ -239,7 +240,7 @@ jobs:
           }
           EOF
 
-          # gradle.properties
+          # 10. Create gradle.properties
           echo "org.gradle.jvmargs=-Xmx2048m" > gradle.properties
           echo "android.useAndroidX=true" >> gradle.properties
 
@@ -256,5 +257,5 @@ jobs:
       # 4. UPLOAD
       - uses: actions/upload-artifact@v4
         with:
-          name: MomRelay-App-ShellFix
+          name: MomRelay-App-Final
           path: app/build/outputs/apk/debug/app-debug.apk
