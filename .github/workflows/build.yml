@@ -8,36 +8,26 @@ jobs:
       
       - uses: actions/setup-java@v3
         with:
-          distribution: 'temurin'
+          distribution: 'zulu'
           java-version: '17'
       
-      # STEP 1: FORCE THE CORRECT GRADLE VERSION (The Magic Fix)
-      - name: Setup Gradle
-        uses: gradle/gradle-build-action@v2
-        with:
-          gradle-version: 8.0
-          
-      # STEP 2: GENERATE PERFECT FILES (Using Python)
+      # STEP 1: GENERATE FILES (Using Python for 100% Accuracy)
       - name: Generate Project Files
         run: |
           python3 -c "
           import os
           
-          # 1. gradle.properties (Crucial for stability)
-          with open('gradle.properties', 'w') as f:
-              f.write('android.useAndroidX=true\nandroid.enableJetifier=true\norg.gradle.jvmargs=-Xmx2048m')
-          
-          # 2. settings.gradle
+          # 1. settings.gradle
           with open('settings.gradle', 'w') as f:
               f.write(\"include ':app'\")
           
-          # 3. Root build.gradle (Using Golden Versions)
+          # 2. Root build.gradle (Standard Config)
           root_build = \"\"\"
           buildscript {
               repositories { google(); mavenCentral() }
               dependencies {
-                  classpath 'com.android.tools.build:gradle:8.0.0'
-                  classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20'
+                  classpath 'com.android.tools.build:gradle:8.2.0'
+                  classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.20'
               }
           }
           allprojects { repositories { google(); mavenCentral() } }
@@ -46,7 +36,7 @@ jobs:
           with open('build.gradle', 'w') as f:
               f.write(root_build)
               
-          # 4. App build.gradle (Compatible SDK 33)
+          # 3. App build.gradle (SDK 34)
           os.makedirs('app', exist_ok=True)
           app_build = \"\"\"
           plugins {
@@ -55,28 +45,28 @@ jobs:
           }
           android {
               namespace 'com.momrelay'
-              compileSdk 33
+              compileSdk 34
               defaultConfig {
                   applicationId 'com.momrelay'
                   minSdk 24
-                  targetSdk 33
+                  targetSdk 34
                   versionCode 1
               }
               buildFeatures { viewBinding true }
           }
           dependencies {
-              implementation 'androidx.core:core-ktx:1.9.0'
+              implementation 'androidx.core:core-ktx:1.12.0'
               implementation 'androidx.appcompat:appcompat:1.6.1'
-              implementation 'com.google.android.material:material:1.8.0'
+              implementation 'com.google.android.material:material:1.11.0'
           }
           \"\"\"
           with open('app/build.gradle', 'w') as f:
               f.write(app_build)
           "
 
-      # STEP 3: BUILD (Using the Forced Gradle Version)
+      # STEP 2: BUILD (Using System Default Gradle - No Setup Required)
       - name: Build APK
-        run: gradle assembleDebug
+        run: gradle assembleDebug --no-daemon
       
       - uses: actions/upload-artifact@v4
         with:
