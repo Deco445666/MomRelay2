@@ -5,20 +5,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
+      
       - uses: actions/setup-java@v3
         with:
-          distribution: 'temurin'
+          distribution: 'zulu'
           java-version: '17'
+          
       - uses: android-actions/setup-android@v3
       
-      # THIS IS THE FIX: We create the missing config files here
-      - name: Create Config Files
+      - name: Fix Missing Files & Build
         run: |
           echo "include ':app'" > settings.gradle
-          echo "buildscript { repositories { google(); mavenCentral() } dependencies { classpath 'com.android.tools.build:gradle:8.0.2'; classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.8.20' } } allprojects { repositories { google(); mavenCentral() } }" > build.gradle
-      
-      - run: gradle assembleDebug
-      
+          echo "buildscript { repositories { google(); mavenCentral() } dependencies { classpath 'com.android.tools.build:gradle:8.1.1'; classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0' } } allprojects { repositories { google(); mavenCentral() } }" > build.gradle
+          gradle assembleDebug
+          
       - uses: actions/upload-artifact@v4
         with:
           name: mom-relay-app
