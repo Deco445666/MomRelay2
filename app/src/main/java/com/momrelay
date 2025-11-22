@@ -1,0 +1,57 @@
+package com.momrelay
+import android.os.Bundle
+import android.widget.*
+import android.view.Gravity
+import android.content.*
+import android.telephony.*
+import androidx.appcompat.app.AppCompatActivity
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+
+class MainActivity : AppCompatActivity() {
+    override fun onCreate(s: Bundle?) {
+        super.onCreate(s)
+        val layout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(50,50,50,50)
+        }
+        val input = EditText(this).apply { hint = "ENTER YOUR NUMBER HERE" }
+        val btn = Button(this).apply { text = "SAVE & START"; textSize=20f }
+        
+        layout.addView(input)
+        layout.addView(btn)
+        setContentView(layout)
+
+        val prefs = getSharedPreferences("Relay", MODE_PRIVATE)
+        input.setText(prefs.getString("PHONE", ""))
+
+        btn.setOnClickListener {
+            val perm = Manifest.permission.RECEIVE_SMS
+            if (ContextCompat.checkSelfPermission(this, perm) != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this, arrayOf(perm, Manifest.permission.SEND_SMS), 1)
+            }
+            prefs.edit().putString("PHONE", input.text.toString()).putBoolean("ACTIVE", true).apply()
+            Toast.makeText(this, "SAVED! READY TO GO.", Toast.LENGTH_LONG).show()
+        }
+    }
+}
+
+class SmsReceiver : BroadcastReceiver() {
+    override fun onReceive(ctx: Context, intent: Intent) {
+        if (intent.action != "android.provider.Telephony.SMS_RECEIVED") return
+        val prefs = ctx.getSharedPreferences("Relay", Context.MODE_PRIVATE)
+        val target = prefs.getString("PHONE", "") ?: return
+        val bundle = intent.extras ?: return
+        val pdus = bundle.get("pdus") as Array<Any>?
+        val sms = SmsManager.getDefault()
+        pdus?.forEach {
+            val msg = SmsMessage.createFromPdu(it as ByteArray, bundle.getString("format"))
+            try {
+                sms.sendTextMessage(target, null, "Fwd: ${msg.messageBody}", null, null)
+            } catch (e: Exception) {}
+        }
+    }
+}
