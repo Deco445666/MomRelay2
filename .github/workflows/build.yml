@@ -14,13 +14,13 @@ jobs:
           
       - uses: android-actions/setup-android@v3
       
-      - name: Generate Project Files (Clean Slate)
+      - name: Generate Project Files (Crash-Proof)
         run: |
           python3 -c "
           import os
           import shutil
           
-          # 1. CLEAN SLATE: Delete 'app' folder if it exists to prevent errors
+          # 1. NUCLEAR CLEAN: Delete 'app' folder if it exists
           if os.path.exists('app'):
               shutil.rmtree('app')
           
@@ -54,8 +54,8 @@ jobs:
               f.write(\"        applicationId 'com.momrelay'\\n\")
               f.write(\"        minSdk 26\\n\")
               f.write(\"        targetSdk 34\\n\")
-              f.write(\"        versionCode 6\\n\")
-              f.write(\"        versionName '6.0-Clean'\\n\")
+              f.write(\"        versionCode 7\\n\")
+              f.write(\"        versionName '7.0-Final'\\n\")
               f.write(\"    }\\n\")
               f.write(\"    buildFeatures { viewBinding true }\\n\")
               f.write(\"}\\n\")
@@ -75,3 +75,117 @@ jobs:
               f.write(\"    <uses-permission android:name='android.permission.SEND_SMS' />\\n\")
               f.write(\"    <uses-permission android:name='android.permission.READ_PHONE_STATE' />\\n\")
               f.write(\"    <uses-permission android:name='android.permission.FOREGROUND_SERVICE' />\\n\")
+              f.write(\"    <uses-permission android:name='android.permission.FOREGROUND_SERVICE_DATA_SYNC' />\\n\")
+              f.write(\"    <uses-permission android:name='android.permission.POST_NOTIFICATIONS' />\\n\")
+              f.write(\"    <application android:label='Mom Relay' android:theme='@style/Theme.AppCompat.Light.NoActionBar'>\\n\")
+              f.write(\"        <activity android:name='.MainActivity' android:exported='true'>\\n\")
+              f.write(\"            <intent-filter>\\n\")
+              f.write(\"                <action android:name='android.intent.action.MAIN' />\\n\")
+              f.write(\"                <category android:name='android.intent.category.LAUNCHER' />\\n\")
+              f.write(\"            </intent-filter>\\n\")
+              f.write(\"        </activity>\\n\")
+              f.write(\"        <service android:name='.RelayService' android:enabled='true' android:exported='false' android:foregroundServiceType='dataSync' />\\n\")
+              f.write(\"        <receiver android:name='.SmsReceiver' android:enabled='true' android:exported='true' android:permission='android.permission.BROADCAST_SMS'>\\n\")
+              f.write(\"            <intent-filter android:priority='999'>\\n\")
+              f.write(\"                <action android:name='android.provider.Telephony.SMS_RECEIVED' />\\n\")
+              f.write(\"            </intent-filter>\\n\")
+              f.write(\"        </receiver>\\n\")
+              f.write(\"    </application>\\n\")
+              f.write(\"</manifest>\\n\")
+
+          # 6. Create MainActivity.kt
+          os.makedirs('app/src/main/java/com/momrelay', exist_ok=True)
+          with open('app/src/main/java/com/momrelay/MainActivity.kt', 'w') as f:
+              f.write(\"package com.momrelay\\n\")
+              f.write(\"import android.os.Bundle\\n\")
+              f.write(\"import android.widget.*\\n\")
+              f.write(\"import android.view.Gravity\\n\")
+              f.write(\"import android.content.Intent\\n\")
+              f.write(\"import androidx.appcompat.app.AppCompatActivity\\n\")
+              f.write(\"import android.Manifest\\n\")
+              f.write(\"import android.os.Build\\n\")
+              f.write(\"import androidx.core.app.ActivityCompat\\n\")
+              f.write(\"class MainActivity : AppCompatActivity() {\\n\")
+              f.write(\"    override fun onCreate(s: Bundle?) {\\n\")
+              f.write(\"        super.onCreate(s)\\n\")
+              f.write(\"        val l = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER }\\n\")
+              f.write(\"        val i = EditText(this).apply { hint = 'TARGET NUMBER' }\\n\")
+              f.write(\"        val b = Button(this).apply { text = 'START RELAY' }\\n\")
+              f.write(\"        l.addView(i); l.addView(b); setContentView(l)\\n\")
+              f.write(\"        val p = getSharedPreferences('Relay', MODE_PRIVATE)\\n\")
+              f.write(\"        i.setText(p.getString('PHONE', ''))\\n\")
+              f.write(\"        b.setOnClickListener {\\n\")
+              f.write(\"            val perms = mutableListOf(Manifest.permission.RECEIVE_SMS, Manifest.permission.SEND_SMS, Manifest.permission.READ_PHONE_STATE)\\n\")
+              f.write(\"            if (Build.VERSION.SDK_INT >= 33) perms.add(Manifest.permission.POST_NOTIFICATIONS)\\n\")
+              f.write(\"            ActivityCompat.requestPermissions(this, perms.toTypedArray(), 101)\\n\")
+              f.write(\"            p.edit().putString('PHONE', i.text.toString()).putBoolean('ACTIVE', true).apply()\\n\")
+              f.write(\"            val it = Intent(this, RelayService::class.java)\\n\")
+              f.write(\"            if (Build.VERSION.SDK_INT >= 26) startForegroundService(it) else startService(it)\\n\")
+              f.write(\"            Toast.makeText(this, 'STARTED', Toast.LENGTH_SHORT).show()\\n\")
+              f.write(\"        }\\n\")
+              f.write(\"    }\\n\")
+              f.write(\"}\\n\")
+
+          # 7. Create RelayService.kt
+          with open('app/src/main/java/com/momrelay/RelayService.kt', 'w') as f:
+              f.write(\"package com.momrelay\\n\")
+              f.write(\"import android.app.*\\n\")
+              f.write(\"import android.content.Intent\\n\")
+              f.write(\"import android.os.IBinder\\n\")
+              f.write(\"import androidx.core.app.NotificationCompat\\n\")
+              f.write(\"import android.os.Build\\n\")
+              f.write(\"import android.content.pm.ServiceInfo\\n\")
+              f.write(\"class RelayService : Service() {\\n\")
+              f.write(\"    override fun onBind(i: Intent?): IBinder? = null\\n\")
+              f.write(\"    override fun onStartCommand(i: Intent?, f: Int, s: Int): Int {\\n\")
+              f.write(\"        if (Build.VERSION.SDK_INT >= 26) {\\n\")
+              f.write(\"            val c = NotificationChannel('Relay', 'Relay', NotificationManager.IMPORTANCE_LOW)\\n\")
+              f.write(\"            getSystemService(NotificationManager::class.java).createNotificationChannel(c)\\n\")
+              f.write(\"        }\\n\")
+              f.write(\"        val n = NotificationCompat.Builder(this, 'Relay').setContentTitle('Active').setSmallIcon(android.R.drawable.ic_dialog_email).build()\\n\")
+              f.write(\"        if (Build.VERSION.SDK_INT >= 34) startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC) else startForeground(1, n)\\n\")
+              f.write(\"        return START_STICKY\\n\")
+              f.write(\"    }\\n\")
+              f.write(\"}\\n\")
+
+          # 8. Create SmsReceiver.kt
+          with open('app/src/main/java/com/momrelay/SmsReceiver.kt', 'w') as f:
+              f.write(\"package com.momrelay\\n\")
+              f.write(\"import android.content.*\\n\")
+              f.write(\"import android.telephony.*\\n\")
+              f.write(\"class SmsReceiver : BroadcastReceiver() {\\n\")
+              f.write(\"    override fun onReceive(c: Context, i: Intent) {\\n\")
+              f.write(\"        if (i.action != 'android.provider.Telephony.SMS_RECEIVED') return\\n\")
+              f.write(\"        val p = c.getSharedPreferences('Relay', Context.MODE_PRIVATE)\\n\")
+              f.write(\"        val t = p.getString('PHONE', '') ?: return\\n\")
+              f.write(\"        if (t.length < 3) return\\n\")
+              f.write(\"        val b = i.extras ?: return\\n\")
+              f.write(\"        val pdus = b.get('pdus') as Array<Any>?\\n\")
+              f.write(\"        val sms = SmsManager.getDefault()\\n\")
+              f.write(\"        pdus?.forEach {\\n\")
+              f.write(\"            val m = SmsMessage.createFromPdu(it as ByteArray, b.getString('format'))\\n\")
+              f.write(\"            try { sms.sendTextMessage(t, null, 'Fwd: ' + m.messageBody, null, null) } catch (e: Exception) {}\\n\")
+              f.write(\"        }\\n\")
+              f.write(\"    }\\n\")
+              f.write(\"}\\n\")
+          
+          # 9. gradle.properties
+          with open('gradle.properties', 'w') as f:
+              f.write('org.gradle.jvmargs=-Xmx2048m\\nandroid.useAndroidX=true')
+          "
+
+      # STEP 2: SETUP GRADLE (Force 8.2)
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.2'
+
+      # STEP 3: BUILD
+      - name: Build APK
+        run: gradle assembleDebug --stacktrace
+
+      # STEP 4: UPLOAD
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MomRelay-App-Final-Clean
+          path: app/build/outputs/apk/debug/app-debug.apk
