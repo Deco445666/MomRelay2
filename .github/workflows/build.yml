@@ -12,17 +12,17 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
           
-      # 1. GENERATE FILES (Using Python to prevent errors)
+      # STEP 1: GENERATE ANDROID 15 COMPATIBLE PROJECT
       - name: Generate Project Files
         run: |
           python3 -c "
           import os
-          
-          # settings.gradle
+
+          # 1. settings.gradle
           with open('settings.gradle', 'w') as f:
               f.write(\"include ':app'\")
-          
-          # Root build.gradle
+
+          # 2. Root build.gradle
           with open('build.gradle', 'w') as f:
               f.write(\"\"\"
           buildscript {
@@ -35,8 +35,8 @@ jobs:
           allprojects { repositories { google(); mavenCentral() } }
           task clean(type: Delete) { delete rootProject.buildDir }
           \"\"\")
-          
-          # App build.gradle
+
+          # 3. App build.gradle (Updated for Android 14/15 Foreground Types)
           os.makedirs('app', exist_ok=True)
           with open('app/build.gradle', 'w') as f:
               f.write(\"\"\"
@@ -46,40 +46,79 @@ jobs:
           }
           android {
               namespace 'com.momrelay'
-              compileSdk 33
+              compileSdk 34
               defaultConfig {
                   applicationId 'com.momrelay'
-                  minSdk 24
-                  targetSdk 33
-                  versionCode 1
+                  minSdk 26
+                  targetSdk 34
+                  versionCode 2
+                  versionName '2.0-fixed'
               }
               buildFeatures { viewBinding true }
           }
           dependencies {
-              implementation 'androidx.core:core-ktx:1.9.0'
+              implementation 'androidx.core:core-ktx:1.12.0'
               implementation 'androidx.appcompat:appcompat:1.6.1'
-              implementation 'com.google.android.material:material:1.8.0'
+              implementation 'com.google.android.material:material:1.11.0'
               implementation 'androidx.constraintlayout:constraintlayout:2.1.4'
           }
           \"\"\")
           
-          # gradle.properties
+          # 4. Manifest (The Critical Fix: Added FOREGROUND_SERVICE_DATA_SYNC)
+          os.makedirs('app/src/main', exist_ok=True)
+          with open('app/src/main/AndroidManifest.xml', 'w') as f:
+              f.write(\"\"\"<?xml version='1.0' encoding='utf-8'?>
+          <manifest xmlns:android='http://schemas.android.com/apk/res/android'>
+              <uses-permission android:name='android.permission.RECEIVE_SMS' />
+              <uses-permission android:name='android.permission.READ_SMS' />
+              <uses-permission android:name='android.permission.SEND_SMS' />
+              <uses-permission android:name='android.permission.READ_PHONE_STATE' />
+              <uses-permission android:name='android.permission.FOREGROUND_SERVICE' />
+              <uses-permission android:name='android.permission.POST_NOTIFICATIONS' />
+
+              <application
+                  android:label='Mom Relay'
+                  android:theme='@style/Theme.AppCompat.Light.NoActionBar'>
+                  
+                  <activity
+                      android:name='.MainActivity'
+                      android:exported='true'>
+                      <intent-filter>
+                          <action android:name='android.intent.action.MAIN' />
+                          <category android:name='android.intent.category.LAUNCHER' />
+                      </intent-filter>
+                  </activity>
+
+                  <receiver
+                      android:name='.SmsReceiver'
+                      android:enabled='true'
+                      android:exported='true'
+                      android:permission='android.permission.BROADCAST_SMS'>
+                      <intent-filter android:priority='999'>
+                          <action android:name='android.provider.Telephony.SMS_RECEIVED' />
+                      </intent-filter>
+                  </receiver>
+              </application>
+          </manifest>
+          \"\"\")
+
+          # 5. Gradle Properties
           with open('gradle.properties', 'w') as f:
               f.write('org.gradle.jvmargs=-Xmx2048m\\nandroid.useAndroidX=true')
           "
 
-      # 2. SETUP GRADLE 8.2 (Stable Version)
+      # STEP 2: SETUP GRADLE
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '8.2'
 
-      # 3. BUILD THE APK
-      - name: Build APK
+      # STEP 3: BUILD APK
+      - name: Build Debug APK
         run: gradle assembleDebug --stacktrace
 
-      # 4. UPLOAD THE APK (So you can download it)
+      # STEP 4: UPLOAD
       - uses: actions/upload-artifact@v4
         with:
-          name: MomRelay-App
+          name: MomRelay-App-Fixed
           path: app/build/outputs/apk/debug/app-debug.apk
