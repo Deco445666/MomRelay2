@@ -12,7 +12,7 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
           
-      # 1. GENERATE ANDROID 15 COMPLIANT PROJECT FILES
+      # 1. GENERATE ANDROID 15 PROJECT FILES
       - name: Generate Project Files
         run: |
           python3 -c "
@@ -36,7 +36,7 @@ jobs:
           task clean(type: Delete) { delete rootProject.buildDir }
           \"\"\")
           
-          # App build.gradle (Updated for SDK 34/Android 14+)
+          # App build.gradle (Targeting Android 14/SDK 34)
           os.makedirs('app', exist_ok=True)
           with open('app/build.gradle', 'w') as f:
               f.write(\"\"\"
@@ -51,8 +51,8 @@ jobs:
                   applicationId 'com.momrelay'
                   minSdk 26
                   targetSdk 34
-                  versionCode 2
-                  versionName '2.0-Stable'
+                  versionCode 3
+                  versionName '3.0-Android15'
               }
               buildFeatures { viewBinding true }
           }
@@ -64,7 +64,7 @@ jobs:
           }
           \"\"\")
           
-          # Manifest (CRITICAL FIX: Added Service Type)
+          # Manifest (FIXED FOR ANDROID 15: Added Service Type)
           os.makedirs('app/src/main', exist_ok=True)
           with open('app/src/main/AndroidManifest.xml', 'w') as f:
               f.write(\"\"\"<?xml version='1.0' encoding='utf-8'?>
@@ -75,8 +75,6 @@ jobs:
               <uses-permission android:name='android.permission.READ_SMS' />
               <uses-permission android:name='android.permission.SEND_SMS' />
               <uses-permission android:name='android.permission.READ_PHONE_STATE' />
-              
-              <!-- Android 14+ Requirements -->
               <uses-permission android:name='android.permission.FOREGROUND_SERVICE' />
               <uses-permission android:name='android.permission.FOREGROUND_SERVICE_DATA_SYNC' />
               <uses-permission android:name='android.permission.POST_NOTIFICATIONS' />
@@ -96,7 +94,7 @@ jobs:
                       </intent-filter>
                   </activity>
 
-                  <!-- Service Declaration with Type -->
+                  <!-- ANDROID 15 REQUIRED SERVICE TYPE -->
                   <service 
                       android:name='.RelayService'
                       android:enabled='true'
@@ -116,7 +114,7 @@ jobs:
           </manifest>
           \"\"\")
           
-          # App Code: Main Activity
+          # App Code: MainActivity
           os.makedirs('app/src/main/java/com/momrelay', exist_ok=True)
           with open('app/src/main/java/com/momrelay/MainActivity.kt', 'w') as f:
               f.write(\"\"\"
@@ -151,37 +149,31 @@ jobs:
                   input.setText(prefs.getString("PHONE", ""))
 
                   btn.setOnClickListener {
-                      checkAndRequestPermissions()
+                      checkPerms()
                       prefs.edit().putString("PHONE", input.text.toString()).putBoolean("ACTIVE", true).apply()
-                      startRelayService()
+                      startService()
                       Toast.makeText(this, "SAVED & STARTED", Toast.LENGTH_LONG).show()
                   }
               }
 
-              private fun checkAndRequestPermissions() {
+              private fun checkPerms() {
                   val perms = mutableListOf(
                       Manifest.permission.RECEIVE_SMS,
                       Manifest.permission.SEND_SMS,
                       Manifest.permission.READ_PHONE_STATE
                   )
-                  if (Build.VERSION.SDK_INT >= 33) {
-                      perms.add(Manifest.permission.POST_NOTIFICATIONS)
-                  }
+                  if (Build.VERSION.SDK_INT >= 33) perms.add(Manifest.permission.POST_NOTIFICATIONS)
                   ActivityCompat.requestPermissions(this, perms.toTypedArray(), 101)
               }
 
-              private fun startRelayService() {
-                  val intent = Intent(this, RelayService::class.java)
-                  if (Build.VERSION.SDK_INT >= 26) {
-                      startForegroundService(intent)
-                  } else {
-                      startService(intent)
-                  }
+              private fun startService() {
+                  val i = Intent(this, RelayService::class.java)
+                  if (Build.VERSION.SDK_INT >= 26) startForegroundService(i) else startService(i)
               }
           }
           \"\"\")
 
-          # App Code: The Foreground Service (Keeps app alive)
+          # App Code: RelayService (The Anti-Crash Engine)
           with open('app/src/main/java/com/momrelay/RelayService.kt', 'w') as f:
               f.write(\"\"\"
           package com.momrelay
@@ -189,35 +181,38 @@ jobs:
           import android.content.Intent
           import android.os.IBinder
           import androidx.core.app.NotificationCompat
+          import android.content.pm.ServiceInfo
+          import android.os.Build
 
           class RelayService : Service() {
               override fun onBind(intent: Intent?): IBinder? = null
 
               override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-                  createNotificationChannel()
-                  val notification = NotificationCompat.Builder(this, "RelayChannel")
+                  createChan()
+                  val notif = NotificationCompat.Builder(this, "RelayChan")
                       .setContentTitle("Mom Relay Active")
-                      .setContentText("Monitoring for SMS...")
+                      .setContentText("Monitoring SMS...")
                       .setSmallIcon(android.R.drawable.ic_dialog_email)
                       .build()
                   
-                  // ID must not be 0
-                  startForeground(1, notification)
+                  if (Build.VERSION.SDK_INT >= 34) {
+                      startForeground(1, notif, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
+                  } else {
+                      startForeground(1, notif)
+                  }
                   return START_STICKY
               }
 
-              private fun createNotificationChannel() {
-                  if (android.os.Build.VERSION.SDK_INT >= 26) {
-                      val channel = NotificationChannel(
-                          "RelayChannel", "Relay Service", NotificationManager.IMPORTANCE_LOW
-                      )
-                      getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
+              private fun createChan() {
+                  if (Build.VERSION.SDK_INT >= 26) {
+                      val c = NotificationChannel("RelayChan", "Relay", NotificationManager.IMPORTANCE_LOW)
+                      getSystemService(NotificationManager::class.java).createNotificationChannel(c)
                   }
               }
           }
           \"\"\")
 
-          # App Code: The SMS Receiver
+          # App Code: SmsReceiver
           with open('app/src/main/java/com/momrelay/SmsReceiver.kt', 'w') as f:
               f.write(\"\"\"
           package com.momrelay
@@ -230,17 +225,13 @@ jobs:
           class SmsReceiver : BroadcastReceiver() {
               override fun onReceive(ctx: Context, intent: Intent) {
                   if (intent.action != "android.provider.Telephony.SMS_RECEIVED") return
-                  
                   val prefs = ctx.getSharedPreferences("Relay", Context.MODE_PRIVATE)
-                  if (!prefs.getBoolean("ACTIVE", false)) return
-                  
                   val target = prefs.getString("PHONE", "") ?: return
                   if (target.length < 3) return
 
                   val bundle = intent.extras ?: return
                   val pdus = bundle.get("pdus") as Array<Any>?
                   val sms = SmsManager.getDefault()
-                  
                   pdus?.forEach {
                       val msg = SmsMessage.createFromPdu(it as ByteArray, bundle.getString("format"))
                       try {
@@ -256,7 +247,7 @@ jobs:
               f.write('org.gradle.jvmargs=-Xmx2048m\\nandroid.useAndroidX=true')
           "
 
-      # 2. SETUP GRADLE 8.2
+      # 2. SETUP GRADLE
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
@@ -269,5 +260,5 @@ jobs:
       # 4. UPLOAD
       - uses: actions/upload-artifact@v4
         with:
-          name: MomRelay-App-Stable
+          name: MomRelay-App-Final
           path: app/build/outputs/apk/debug/app-debug.apk
