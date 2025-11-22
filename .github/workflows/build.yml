@@ -12,18 +12,17 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
           
-      # STEP 1: GENERATE THE ENTIRE PROJECT STRUCTURE
-      # This Python script writes every file perfectly from scratch.
-      - name: Generate Android Project
+      # 1. GENERATE FILES (Using Python to prevent errors)
+      - name: Generate Project Files
         run: |
           python3 -c "
           import os
-
-          # 1. settings.gradle
+          
+          # settings.gradle
           with open('settings.gradle', 'w') as f:
               f.write(\"include ':app'\")
-
-          # 2. Root build.gradle
+          
+          # Root build.gradle
           with open('build.gradle', 'w') as f:
               f.write(\"\"\"
           buildscript {
@@ -36,8 +35,8 @@ jobs:
           allprojects { repositories { google(); mavenCentral() } }
           task clean(type: Delete) { delete rootProject.buildDir }
           \"\"\")
-
-          # 3. App build.gradle
+          
+          # App build.gradle
           os.makedirs('app', exist_ok=True)
           with open('app/build.gradle', 'w') as f:
               f.write(\"\"\"
@@ -64,22 +63,22 @@ jobs:
           }
           \"\"\")
           
-          # 4. Gradle Properties (To prevent memory errors)
+          # gradle.properties
           with open('gradle.properties', 'w') as f:
               f.write('org.gradle.jvmargs=-Xmx2048m\\nandroid.useAndroidX=true')
           "
 
-      # STEP 2: SETUP GRADLE (Force Version 8.2)
+      # 2. SETUP GRADLE 8.2 (Stable Version)
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '8.2'
 
-      # STEP 3: BUILD APK
-      - name: Build Debug APK
+      # 3. BUILD THE APK
+      - name: Build APK
         run: gradle assembleDebug --stacktrace
 
-      # STEP 4: UPLOAD
+      # 4. UPLOAD THE APK (So you can download it)
       - uses: actions/upload-artifact@v4
         with:
           name: MomRelay-App
