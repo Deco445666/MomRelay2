@@ -1,4 +1,4 @@
-name: Build MomRelay Final v8
+name: Build MomRelay Final v9
 on: [push, workflow_dispatch]
 
 jobs:
@@ -11,16 +11,65 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Setup & Inject Code
+      - name: Generate Project Structure
         run: |
-          # 1. CLEAN START
+          # 1. CLEAN UP
           rm -rf app settings.gradle build.gradle gradle.properties
-          wget https://github.com/feedvay/android-hello-world/archive/refs/heads/master.zip -O project.zip
-          unzip project.zip
-          mv android-hello-world-master/* .
-          rm -rf android-hello-world-master project.zip
+          
+          # 2. CREATE FOLDERS
+          mkdir -p app/src/main/java/com/momrelay
+          mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/res/drawable
 
-          # 2. MANIFEST
+          # 3. SETTINGS.GRADLE
+          echo "include ':app'" > settings.gradle
+
+          # 4. ROOT BUILD.GRADLE
+          cat <<'EOF' > build.gradle
+          buildscript {
+              repositories { google(); mavenCentral() }
+              dependencies {
+                  classpath 'com.android.tools.build:gradle:8.1.1'
+                  classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0'
+              }
+          }
+          allprojects { repositories { google(); mavenCentral() } }
+          task clean(type: Delete) { delete rootProject.buildDir }
+          EOF
+
+          # 5. APP BUILD.GRADLE
+          cat <<'EOF' > app/build.gradle
+          plugins {
+              id 'com.android.application'
+              id 'org.jetbrains.kotlin.android'
+          }
+          android {
+              namespace 'com.momrelay'
+              compileSdk 34
+              defaultConfig {
+                  applicationId 'com.momrelay'
+                  minSdk 26
+                  targetSdk 34
+                  versionCode 9
+                  versionName "9.0"
+              }
+              buildFeatures { viewBinding true }
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+              kotlinOptions {
+                  jvmTarget = '17'
+              }
+          }
+          dependencies {
+              implementation 'androidx.core:core-ktx:1.12.0'
+              implementation 'androidx.appcompat:appcompat:1.6.1'
+              implementation 'com.google.android.material:material:1.11.0'
+          }
+          EOF
+
+          # 6. MANIFEST (Android 15 Ready)
           cat <<'EOF' > app/src/main/AndroidManifest.xml
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -33,9 +82,7 @@ jobs:
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
               <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
               <application
-                  android:allowBackup="true"
-                  android:icon="@mipmap/ic_launcher"
-                  android:label="Mom Relay v8"
+                  android:label="Mom Relay v9"
                   android:theme="@style/Theme.AppCompat.Light.NoActionBar">
                   <activity android:name=".MainActivity" android:exported="true">
                       <intent-filter>
@@ -53,8 +100,7 @@ jobs:
           </manifest>
           EOF
 
-          # 3. MAIN ACTIVITY
-          mkdir -p app/src/main/java/com/momrelay
+          # 7. MAIN ACTIVITY (UI & Logic)
           cat <<'EOF' > app/src/main/java/com/momrelay/MainActivity.kt
           package com.momrelay
           import android.os.Bundle
@@ -134,7 +180,7 @@ jobs:
           }
           EOF
 
-          # 4. RELAY SERVICE
+          # 8. RELAY SERVICE
           cat <<'EOF' > app/src/main/java/com/momrelay/RelayService.kt
           package com.momrelay
           import android.app.*
@@ -157,77 +203,46 @@ jobs:
           }
           EOF
 
-          # 5. SMS RECEIVER (Now with NOTIFICATION FEEDBACK)
+          # 9. SMS RECEIVER
           cat <<'EOF' > app/src/main/java/com/momrelay/SmsReceiver.kt
           package com.momrelay
           import android.content.*
           import android.telephony.*
-          import android.app.NotificationManager
-          import androidx.core.app.NotificationCompat
-          
           class SmsReceiver : BroadcastReceiver() {
               override fun onReceive(c: Context, i: Intent) {
                   if (i.action != "android.provider.Telephony.SMS_RECEIVED") return
-                  
-                  // 1. Show notification to prove we woke up
-                  notify(c, "SMS Detected", "Processing...")
-                  
                   val p = c.getSharedPreferences("Relay", Context.MODE_PRIVATE)
-                  val target = p.getString("PHONE", "") ?: return
-                  val rawKeys = p.getString("KEYWORDS", "") ?: ""
-                  
-                  val bundle = i.extras ?: return
-                  val pdus = bundle.get("pdus") as Array<Any>?
+                  val t = p.getString("PHONE", "") ?: return
+                  val k = p.getString("KEYWORDS", "") ?: ""
+                  val b = i.extras ?: return
+                  val pdus = b.get("pdus") as Array<Any>?
                   val sms = SmsManager.getDefault()
-                  
                   pdus?.forEach {
-                      val m = SmsMessage.createFromPdu(it as ByteArray, bundle.getString("format"))
+                      val m = SmsMessage.createFromPdu(it as ByteArray, b.getString("format"))
                       val body = m.messageBody ?: ""
-                      val sender = m.originatingAddress ?: "?"
-                      
-                      val keys = rawKeys.split(Regex("[,\\s]+")).filter { k -> k.isNotEmpty() }
-                      
-                      // Logic
-                      var shouldSend = false
-                      if (keys.isEmpty()) shouldSend = true
-                      else {
-                          val lowBody = body.lowercase()
-                          for (k in keys) if (lowBody.contains(k.lowercase())) shouldSend = true
-                      }
-                      
-                      if (shouldSend) {
-                          try {
-                              sms.sendTextMessage(target, null, "Fwd $sender: $body", null, null)
-                              notify(c, "Success", "Forwarded to $target")
-                          } catch (e: Exception) {
-                              notify(c, "Failed", e.message ?: "Unknown Error")
-                          }
-                      } else {
-                          notify(c, "Ignored", "Keyword not matched")
+                      if (k.isEmpty() || k.split(",").any { key -> key.isNotBlank() && body.lowercase().contains(key.trim().lowercase()) }) {
+                          try { sms.sendTextMessage(t, null, "Fwd: " + body, null, null) } catch (e: Exception) {}
                       }
                   }
-              }
-              
-              private fun notify(c: Context, title: String, msg: String) {
-                  val nm = c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                  val b = NotificationCompat.Builder(c, "Relay")
-                      .setSmallIcon(android.R.drawable.ic_dialog_info)
-                      .setContentTitle(title)
-                      .setContentText(msg)
-                      .setPriority(NotificationCompat.PRIORITY_HIGH)
-                  nm.notify(System.currentTimeMillis().toInt(), b.build())
               }
           }
           EOF
 
-          # 6. GRADLE CONFIG
-          echo "android { namespace 'com.momrelay'; compileSdk 34; defaultConfig { applicationId 'com.momrelay'; minSdk 26; targetSdk 34; versionCode 1; } }" >> app/build.gradle
+          # 10. PROPERTIES
+          echo "org.gradle.jvmargs=-Xmx2048m" > gradle.properties
+          echo "android.useAndroidX=true" >> gradle.properties
+
+      - name: Setup Gradle 8.2
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: '8.2'
 
       - name: Build APK
-        run: ./gradlew assembleDebug
+        run: gradle assembleDebug
 
       - uses: actions/upload-artifact@v4
         with:
-          name: MomRelay-Ultimate-v8
+          name: MomRelay-Final-v9
           path: app/build/outputs/apk/debug/app-debug.apk
-          
+
+
