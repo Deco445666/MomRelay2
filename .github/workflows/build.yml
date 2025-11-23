@@ -1,4 +1,4 @@
-name: Build MomRelay Final v15
+name: Build MomRelay Final v16
 on: [push, workflow_dispatch]
 
 jobs:
@@ -11,23 +11,19 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Generate Project Structure
+      - name: Setup & Inject Code
         run: |
-          # 1. CLEAN UP
+          # 1. CLEAN START
           rm -rf app settings.gradle build.gradle gradle.properties
           
-          # 2. CREATE FOLDERS
-          mkdir -p app/src/main/java/com/momrelay
-          mkdir -p app/src/main/res/values
-          mkdir -p app/src/main/res/drawable
+          # 2. DOWNLOAD VERIFIED BASE PROJECT
+          # We use a known working 'Hello World' base to avoid configuration hell
+          wget https://github.com/feedvay/android-hello-world/archive/refs/heads/master.zip -O project.zip
+          unzip project.zip
+          mv android-hello-world-master/* .
+          rm -rf android-hello-world-master project.zip
 
-          # 3. SETTINGS.GRADLE
-          echo "include ':app'" > settings.gradle
-
-          # 4. DOWNLOAD LUXURY ICON
-          wget -O app/src/main/res/drawable/ic_launcher.png https://cdn-icons-png.flaticon.com/512/10628/10628946.png
-
-          # 5. ROOT BUILD.GRADLE
+          # 3. UPDATE ROOT BUILD.GRADLE (Force Kotlin 1.9.0 for Java 17 compat)
           cat <<'EOF' > build.gradle
           buildscript {
               repositories { google(); mavenCentral() }
@@ -40,7 +36,7 @@ jobs:
           task clean(type: Delete) { delete rootProject.buildDir }
           EOF
 
-          # 6. APP BUILD.GRADLE
+          # 4. APP BUILD.GRADLE (Set JVM Target to 17)
           cat <<'EOF' > app/build.gradle
           plugins {
               id 'com.android.application'
@@ -53,10 +49,11 @@ jobs:
                   applicationId 'com.momrelay'
                   minSdk 26
                   targetSdk 34
-                  versionCode 15
-                  versionName "15.0"
+                  versionCode 16
+                  versionName "16.0"
               }
               buildFeatures { viewBinding true }
+              
               compileOptions {
                   sourceCompatibility JavaVersion.VERSION_17
                   targetCompatibility JavaVersion.VERSION_17
@@ -72,7 +69,7 @@ jobs:
           }
           EOF
 
-          # 7. MANIFEST
+          # 5. MANIFEST (Android 15 Ready)
           cat <<'EOF' > app/src/main/AndroidManifest.xml
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -86,9 +83,9 @@ jobs:
               <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
               <application
                   android:allowBackup="true"
-                  android:icon="@drawable/ic_launcher"
-                  android:label="Mom Relay Luxe"
-                  android:theme="@style/Theme.AppCompat.NoActionBar">
+                  android:icon="@mipmap/ic_launcher"
+                  android:label="Mom Relay v16"
+                  android:theme="@style/Theme.AppCompat.Light.NoActionBar">
                   <activity android:name=".MainActivity" android:exported="true">
                       <intent-filter>
                           <action android:name="android.intent.action.MAIN" />
@@ -105,7 +102,10 @@ jobs:
           </manifest>
           EOF
 
-          # 8. MAIN ACTIVITY
+          # 6. CREATE PACKAGE STRUCTURE
+          mkdir -p app/src/main/java/com/momrelay
+
+          # 7. MAIN ACTIVITY
           cat <<'EOF' > app/src/main/java/com/momrelay/MainActivity.kt
           package com.momrelay
           import android.os.Bundle
@@ -118,137 +118,57 @@ jobs:
           import android.os.Build
           import android.app.AlertDialog
           import android.content.Context
-          import android.graphics.Color
-          import android.view.View
+          import android.content.pm.PackageManager
 
           class MainActivity : AppCompatActivity() {
               override fun onCreate(s: Bundle?) {
                   super.onCreate(s)
-                  
                   val l = LinearLayout(this).apply { 
-                      orientation = LinearLayout.VERTICAL
-                      gravity = Gravity.CENTER
-                      setPadding(60,60,60,60)
-                      setBackgroundColor(Color.parseColor("#121212"))
+                      orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(50,50,50,50)
+                      setBackgroundColor(0xFFFFFFFF.toInt())
                   }
-                  
-                  val icon = ImageView(this).apply {
-                      setImageResource(R.drawable.ic_launcher)
-                      layoutParams = LinearLayout.LayoutParams(250, 250).apply { setMargins(0,0,0,50) }
-                  }
-                  
-                  val title = TextView(this).apply {
-                      text = "MOM RELAY"
-                      textSize = 28f
-                      gravity = Gravity.CENTER
-                      setTextColor(Color.parseColor("#FFD700"))
-                      setPadding(0, 0, 0, 20)
-                      paint.isFakeBoldText = true
-                  }
-                  
-                  val status = TextView(this).apply { 
-                      text = "SYSTEM IDLE"
-                      textSize = 14f
-                      gravity = Gravity.CENTER
-                      setTextColor(Color.WHITE)
-                      setPadding(0,0,0,60)
-                  }
-                  
-                  val btn = Button(this).apply { 
-                      text = "INITIALIZE" 
-                      setTextColor(Color.BLACK)
-                      setBackgroundColor(Color.parseColor("#FFD700"))
-                      textSize = 16f
-                  }
-                  
-                  l.addView(icon); l.addView(title); l.addView(status); l.addView(btn)
-                  setContentView(l)
+                  val status = TextView(this).apply { text = "Status: Idle"; textSize=18f; gravity=Gravity.CENTER; setPadding(0,0,0,60) }
+                  val btn = Button(this).apply { text = "CONFIGURE" }
+                  l.addView(status); l.addView(btn); setContentView(l)
                   
                   val prefs = getSharedPreferences("Relay", Context.MODE_PRIVATE)
                   if(prefs.getBoolean("ACTIVE", false)) {
-                      status.text = "• ACTIVE •\nTarget: " + prefs.getString("PHONE", "")
-                      status.setTextColor(Color.parseColor("#00FF00"))
-                      btn.text = "DEACTIVATE"
-                      btn.setBackgroundColor(Color.parseColor("#333333"))
-                      btn.setTextColor(Color.RED)
+                      status.text = "RUNNING\nTo: " + prefs.getString("PHONE", "")
+                      status.setTextColor(0xFF00C853.toInt())
+                      btn.text = "STOP SERVICE"
                   }
 
                   btn.setOnClickListener {
-                      it.animate().scaleX(0.95f).scaleY(0.95f).setDuration(100).withEndAction {
-                          it.animate().scaleX(1f).scaleY(1f).setDuration(100).start()
-                      }.start()
-
                       if (prefs.getBoolean("ACTIVE", false)) {
                           prefs.edit().putBoolean("ACTIVE", false).apply()
                           stopService(Intent(this, RelayService::class.java))
-                          status.text = "SYSTEM STOPPED"
-                          status.setTextColor(Color.RED)
-                          btn.text = "INITIALIZE"
-                          btn.setBackgroundColor(Color.parseColor("#FFD700"))
-                          btn.setTextColor(Color.BLACK)
+                          status.text = "Status: Stopped"
+                          status.setTextColor(0xFFD32F2F.toInt())
+                          btn.text = "CONFIGURE"
                       } else {
-                          if(checkPerms()) showLuxuryDialog(status, btn) else reqPerms()
+                          showDialog(status, btn)
                       }
                   }
                   if(!checkPerms()) reqPerms()
               }
 
-              private fun showLuxuryDialog(tv: TextView, btn: Button) {
+              private fun showDialog(tv: TextView, btn: Button) {
                   val ctx = this
-                  val layout = LinearLayout(ctx).apply {
-                      orientation = LinearLayout.VERTICAL
-                      setPadding(60, 50, 60, 50)
-                      setBackgroundColor(Color.WHITE)
-                  }
+                  val layout = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; setPadding(50, 40, 50, 10) }
                   val prefs = getSharedPreferences("Relay", Context.MODE_PRIVATE)
-                  
-                  val box1 = EditText(ctx).apply { 
-                      hint = "Target Number" 
-                      setText(prefs.getString("PHONE", ""))
-                      inputType = 3
-                      background.setTint(Color.BLACK)
-                  }
-                  
-                  val box2 = EditText(ctx).apply { 
-                      hint = "Keywords (Optional)" 
-                      setText(prefs.getString("KEYWORDS", ""))
-                      background.setTint(Color.BLACK)
-                  }
-                  
-                  val switchOtp = Switch(ctx).apply {
-                      text = "Extract Code Only (Clean OTP)"
-                      isChecked = prefs.getBoolean("OTP_ONLY", false)
-                      textSize = 14f
-                      setPadding(0, 30, 0, 0)
-                  }
-                  
-                  layout.addView(box1); layout.addView(box2); layout.addView(switchOtp)
+                  val box1 = EditText(ctx).apply { hint = "Target Phone"; setText(prefs.getString("PHONE", "")); inputType=3 }
+                  val box2 = EditText(ctx).apply { hint = "Keywords"; setText(prefs.getString("KEYWORDS", "")) }
+                  layout.addView(box1); layout.addView(box2)
 
-                  AlertDialog.Builder(ctx)
-                      .setTitle("Configuration")
-                      .setView(layout)
-                      .setPositiveButton("ACTIVATE") { _, _ ->
-                          val ph = box1.text.toString().trim()
-                          val kw = box2.text.toString().trim()
-                          if (ph.length < 3) return@setPositiveButton
-                          
-                          prefs.edit()
-                              .putString("PHONE", ph)
-                              .putString("KEYWORDS", kw)
-                              .putBoolean("OTP_ONLY", switchOtp.isChecked)
-                              .putBoolean("ACTIVE", true)
-                              .apply()
-                          
-                          val it = Intent(ctx, RelayService::class.java)
-                          if (Build.VERSION.SDK_INT >= 26) startForegroundService(it) else startService(it)
-                          
-                          tv.text = "• ACTIVE •\nTarget: " + ph
-                          tv.setTextColor(Color.parseColor("#00FF00"))
-                          btn.text = "DEACTIVATE"
-                          btn.setBackgroundColor(Color.parseColor("#333333"))
-                          btn.setTextColor(Color.RED)
-                      }
-                      .show()
+                  AlertDialog.Builder(ctx).setTitle("Setup").setView(layout).setPositiveButton("START") { _, _ ->
+                      val ph = box1.text.toString().trim()
+                      val kw = box2.text.toString().trim()
+                      if (ph.length < 3) return@setPositiveButton
+                      prefs.edit().putString("PHONE", ph).putString("KEYWORDS", kw).putBoolean("ACTIVE", true).apply()
+                      val it = Intent(ctx, RelayService::class.java)
+                      if (Build.VERSION.SDK_INT >= 26) startForegroundService(it) else startService(it)
+                      tv.text = "RUNNING\nTo: " + ph; tv.setTextColor(0xFF00C853.toInt()); btn.text = "STOP SERVICE"
+                  }.show()
               }
 
               private fun checkPerms(): Boolean {
@@ -265,7 +185,7 @@ jobs:
           }
           EOF
 
-          # 9. RELAY SERVICE
+          # 8. RELAY SERVICE
           cat <<'EOF' > app/src/main/java/com/momrelay/RelayService.kt
           package com.momrelay
           import android.app.*
@@ -281,20 +201,18 @@ jobs:
                       val c = NotificationChannel("Relay", "Relay Service", NotificationManager.IMPORTANCE_LOW)
                       getSystemService(NotificationManager::class.java).createNotificationChannel(c)
                   }
-                  val n = NotificationCompat.Builder(this, "Relay").setContentTitle("Mom Relay Active").setSmallIcon(R.drawable.ic_launcher).build()
+                  val n = NotificationCompat.Builder(this, "Relay").setContentTitle("Mom Relay Active").setSmallIcon(android.R.drawable.ic_dialog_email).build()
                   if (Build.VERSION.SDK_INT >= 34) startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC) else startForeground(1, n)
                   return START_STICKY
               }
           }
           EOF
 
-          # 10. SMS RECEIVER (Improved Regex for Code Extraction)
+          # 9. SMS RECEIVER (Smart Logic)
           cat <<'EOF' > app/src/main/java/com/momrelay/SmsReceiver.kt
           package com.momrelay
           import android.content.*
           import android.telephony.*
-          import java.util.regex.Pattern
-          
           class SmsReceiver : BroadcastReceiver() {
               override fun onReceive(c: Context, i: Intent) {
                   if (i.action != "android.provider.Telephony.SMS_RECEIVED") return
@@ -302,9 +220,7 @@ jobs:
                   if (!p.getBoolean("ACTIVE", false)) return
                   
                   val target = p.getString("PHONE", "") ?: return
-                  val keys = p.getString("KEYWORDS", "") ?: ""
-                  val otpOnly = p.getBoolean("OTP_ONLY", false)
-                  
+                  val k = p.getString("KEYWORDS", "") ?: ""
                   val b = i.extras ?: return
                   val pdus = b.get("pdus") as Array<Any>?
                   val sms = SmsManager.getDefault()
@@ -312,42 +228,32 @@ jobs:
                   pdus?.forEach {
                       val m = SmsMessage.createFromPdu(it as ByteArray, b.getString("format"))
                       val body = m.messageBody ?: ""
-                      val sender = m.originatingAddress ?: "?"
                       
-                      var finalMsg = "Fwd $sender: $body"
+                      // Logic: If keywords exist, check them (case insensitive). If empty, send all.
+                      val keys = k.split(Regex("[,\\s]+")).filter { it.isNotEmpty() }
                       var shouldSend = false
                       
-                      // 1. CHECK KEYWORDS
-                      val kList = keys.split(Regex("[,\\s]+")).filter { it.isNotEmpty() }
-                      if (kList.isEmpty()) shouldSend = true
-                      else {
-                          for (k in kList) if (body.lowercase().contains(k.lowercase())) shouldSend = true
-                      }
-                      
-                      // 2. SMART OTP EXTRACTION
-                      if (shouldSend && otpOnly) {
-                          // Looks for 4 to 8 digits that are NOT part of a longer number
-                          // Ex: "123456" works. "Order #1234567890" ignored.
-                          val matcher = Pattern.compile("(?<!\\d)\\d{4,8}(?!\\d)").matcher(body)
-                          if (matcher.find()) {
-                              // Just send the code
-                              finalMsg = matcher.group()
-                          } else {
-                              // If no code found, maybe don't send? Or send full?
-                              // Let's send full as fallback so you don't miss it.
-                              finalMsg = "Fwd: $body" 
+                      if (keys.isEmpty()) {
+                          shouldSend = true
+                      } else {
+                          val lowerBody = body.lowercase()
+                          for (key in keys) {
+                              if (lowerBody.contains(key.lowercase())) {
+                                  shouldSend = true
+                                  break
+                              }
                           }
                       }
                       
                       if (shouldSend) {
-                          try { sms.sendTextMessage(target, null, finalMsg, null, null) } catch (e: Exception) {}
+                          try { sms.sendTextMessage(target, null, "Fwd: " + body, null, null) } catch (e: Exception) {}
                       }
                   }
               }
           }
           EOF
 
-          # 11. PROPERTIES
+          # 10. PROPERTIES
           echo "org.gradle.jvmargs=-Xmx2048m" > gradle.properties
           echo "android.useAndroidX=true" >> gradle.properties
 
@@ -361,7 +267,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: MomRelay-Luxury-v15
+          name: MomRelay-Final-v16
           path: app/build/outputs/apk/debug/app-debug.apk
 
 
