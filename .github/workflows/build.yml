@@ -1,4 +1,4 @@
-name: Build MomRelay Final v16
+name: Build MomRelay Final v17
 on: [push, workflow_dispatch]
 
 jobs:
@@ -11,19 +11,20 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Setup & Inject Code
+      - name: Generate Project Structure
         run: |
-          # 1. CLEAN START
+          # 1. CLEAN UP
           rm -rf app settings.gradle build.gradle gradle.properties
           
-          # 2. DOWNLOAD VERIFIED BASE PROJECT
-          # We use a known working 'Hello World' base to avoid configuration hell
-          wget https://github.com/feedvay/android-hello-world/archive/refs/heads/master.zip -O project.zip
-          unzip project.zip
-          mv android-hello-world-master/* .
-          rm -rf android-hello-world-master project.zip
+          # 2. CREATE FOLDERS
+          mkdir -p app/src/main/java/com/momrelay
+          mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/res/drawable
 
-          # 3. UPDATE ROOT BUILD.GRADLE (Force Kotlin 1.9.0 for Java 17 compat)
+          # 3. SETTINGS.GRADLE
+          echo "include ':app'" > settings.gradle
+
+          # 4. ROOT BUILD.GRADLE
           cat <<'EOF' > build.gradle
           buildscript {
               repositories { google(); mavenCentral() }
@@ -36,7 +37,7 @@ jobs:
           task clean(type: Delete) { delete rootProject.buildDir }
           EOF
 
-          # 4. APP BUILD.GRADLE (Set JVM Target to 17)
+          # 5. APP BUILD.GRADLE
           cat <<'EOF' > app/build.gradle
           plugins {
               id 'com.android.application'
@@ -49,8 +50,8 @@ jobs:
                   applicationId 'com.momrelay'
                   minSdk 26
                   targetSdk 34
-                  versionCode 16
-                  versionName "16.0"
+                  versionCode 17
+                  versionName "17.0"
               }
               buildFeatures { viewBinding true }
               
@@ -69,7 +70,7 @@ jobs:
           }
           EOF
 
-          # 5. MANIFEST (Android 15 Ready)
+          # 6. MANIFEST
           cat <<'EOF' > app/src/main/AndroidManifest.xml
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -82,9 +83,7 @@ jobs:
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
               <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
               <application
-                  android:allowBackup="true"
-                  android:icon="@mipmap/ic_launcher"
-                  android:label="Mom Relay v16"
+                  android:label="Mom Relay v17"
                   android:theme="@style/Theme.AppCompat.Light.NoActionBar">
                   <activity android:name=".MainActivity" android:exported="true">
                       <intent-filter>
@@ -102,10 +101,7 @@ jobs:
           </manifest>
           EOF
 
-          # 6. CREATE PACKAGE STRUCTURE
-          mkdir -p app/src/main/java/com/momrelay
-
-          # 7. MAIN ACTIVITY
+          # 7. MAIN ACTIVITY (Fixed Missing Import)
           cat <<'EOF' > app/src/main/java/com/momrelay/MainActivity.kt
           package com.momrelay
           import android.os.Bundle
@@ -118,7 +114,7 @@ jobs:
           import android.os.Build
           import android.app.AlertDialog
           import android.content.Context
-          import android.content.pm.PackageManager
+          import android.content.pm.PackageManager  // <--- THIS WAS MISSING
 
           class MainActivity : AppCompatActivity() {
               override fun onCreate(s: Bundle?) {
@@ -156,15 +152,32 @@ jobs:
                   val ctx = this
                   val layout = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; setPadding(50, 40, 50, 10) }
                   val prefs = getSharedPreferences("Relay", Context.MODE_PRIVATE)
+                  
                   val box1 = EditText(ctx).apply { hint = "Target Phone"; setText(prefs.getString("PHONE", "")); inputType=3 }
-                  val box2 = EditText(ctx).apply { hint = "Keywords"; setText(prefs.getString("KEYWORDS", "")) }
-                  layout.addView(box1); layout.addView(box2)
+                  val box2 = EditText(ctx).apply { hint = "Keywords (Optional)"; setText(prefs.getString("KEYWORDS", "")) }
+                  
+                  // Switch for OTP Only Mode
+                  val switchOtp = Switch(ctx).apply {
+                      text = "Send Only Code (Smart OTP)"
+                      isChecked = prefs.getBoolean("OTP_ONLY", false)
+                      textSize = 14f
+                      setPadding(0, 30, 0, 0)
+                  }
+                  
+                  layout.addView(box1); layout.addView(box2); layout.addView(switchOtp)
 
                   AlertDialog.Builder(ctx).setTitle("Setup").setView(layout).setPositiveButton("START") { _, _ ->
                       val ph = box1.text.toString().trim()
                       val kw = box2.text.toString().trim()
                       if (ph.length < 3) return@setPositiveButton
-                      prefs.edit().putString("PHONE", ph).putString("KEYWORDS", kw).putBoolean("ACTIVE", true).apply()
+                      
+                      prefs.edit()
+                          .putString("PHONE", ph)
+                          .putString("KEYWORDS", kw)
+                          .putBoolean("OTP_ONLY", switchOtp.isChecked)
+                          .putBoolean("ACTIVE", true)
+                          .apply()
+                          
                       val it = Intent(ctx, RelayService::class.java)
                       if (Build.VERSION.SDK_INT >= 26) startForegroundService(it) else startService(it)
                       tv.text = "RUNNING\nTo: " + ph; tv.setTextColor(0xFF00C853.toInt()); btn.text = "STOP SERVICE"
@@ -208,19 +221,20 @@ jobs:
           }
           EOF
 
-          # 9. SMS RECEIVER (Smart Logic)
+          # 9. SMS RECEIVER (Smart OTP Logic Included)
           cat <<'EOF' > app/src/main/java/com/momrelay/SmsReceiver.kt
           package com.momrelay
           import android.content.*
           import android.telephony.*
+          import java.util.regex.Pattern
+          
           class SmsReceiver : BroadcastReceiver() {
               override fun onReceive(c: Context, i: Intent) {
                   if (i.action != "android.provider.Telephony.SMS_RECEIVED") return
                   val p = c.getSharedPreferences("Relay", Context.MODE_PRIVATE)
-                  if (!p.getBoolean("ACTIVE", false)) return
-                  
-                  val target = p.getString("PHONE", "") ?: return
+                  val t = p.getString("PHONE", "") ?: return
                   val k = p.getString("KEYWORDS", "") ?: ""
+                  val otpOnly = p.getBoolean("OTP_ONLY", false)
                   val b = i.extras ?: return
                   val pdus = b.get("pdus") as Array<Any>?
                   val sms = SmsManager.getDefault()
@@ -228,25 +242,30 @@ jobs:
                   pdus?.forEach {
                       val m = SmsMessage.createFromPdu(it as ByteArray, b.getString("format"))
                       val body = m.messageBody ?: ""
+                      val sender = m.originatingAddress ?: "?"
                       
-                      // Logic: If keywords exist, check them (case insensitive). If empty, send all.
-                      val keys = k.split(Regex("[,\\s]+")).filter { it.isNotEmpty() }
+                      var finalMsg = "Fwd $sender: $body"
                       var shouldSend = false
                       
-                      if (keys.isEmpty()) {
-                          shouldSend = true
-                      } else {
-                          val lowerBody = body.lowercase()
-                          for (key in keys) {
-                              if (lowerBody.contains(key.lowercase())) {
-                                  shouldSend = true
-                                  break
-                              }
+                      // 1. KEYWORD CHECK
+                      val keys = k.split(Regex("[,\\s]+")).filter { it.isNotEmpty() }
+                      if (keys.isEmpty()) shouldSend = true
+                      else {
+                          val lowBody = body.lowercase()
+                          for (key in keys) if (lowBody.contains(key.trim().lowercase())) shouldSend = true
+                      }
+                      
+                      // 2. SMART OTP EXTRACTION
+                      if (shouldSend && otpOnly) {
+                          // Matches 4-8 digits that stand alone (e.g. 123456)
+                          val matcher = Pattern.compile("(?<!\\d)\\d{4,8}(?!\\d)").matcher(body)
+                          if (matcher.find()) {
+                              finalMsg = matcher.group() // Send ONLY the number
                           }
                       }
                       
                       if (shouldSend) {
-                          try { sms.sendTextMessage(target, null, "Fwd: " + body, null, null) } catch (e: Exception) {}
+                          try { sms.sendTextMessage(t, null, finalMsg, null, null) } catch (e: Exception) {}
                       }
                   }
               }
@@ -267,7 +286,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: MomRelay-Final-v16
+          name: MomRelay-Final-v17
           path: app/build/outputs/apk/debug/app-debug.apk
 
 
