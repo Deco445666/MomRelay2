@@ -1,4 +1,4 @@
-name: Build MomRelay Final v5
+name: Build MomRelay Final v8
 on: [push, workflow_dispatch]
 
 jobs:
@@ -11,66 +11,16 @@ jobs:
           distribution: 'zulu'
           java-version: '17'
 
-      - name: Generate Project Structure
+      - name: Setup & Inject Code
         run: |
-          # 1. CLEAN UP
+          # 1. CLEAN START
           rm -rf app settings.gradle build.gradle gradle.properties
-          
-          # 2. CREATE FOLDERS
-          mkdir -p app/src/main/java/com/momrelay
-          mkdir -p app/src/main/res/values
-          mkdir -p app/src/main/res/drawable
+          wget https://github.com/feedvay/android-hello-world/archive/refs/heads/master.zip -O project.zip
+          unzip project.zip
+          mv android-hello-world-master/* .
+          rm -rf android-hello-world-master project.zip
 
-          # 3. SETTINGS.GRADLE
-          echo "include ':app'" > settings.gradle
-
-          # 4. ROOT BUILD.GRADLE
-          cat <<'EOF' > build.gradle
-          buildscript {
-              repositories { google(); mavenCentral() }
-              dependencies {
-                  classpath 'com.android.tools.build:gradle:8.1.1'
-                  classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.0'
-              }
-          }
-          allprojects { repositories { google(); mavenCentral() } }
-          task clean(type: Delete) { delete rootProject.buildDir }
-          EOF
-
-          # 5. APP BUILD.GRADLE (Fixed JVM Target)
-          cat <<'EOF' > app/build.gradle
-          plugins {
-              id 'com.android.application'
-              id 'org.jetbrains.kotlin.android'
-          }
-          android {
-              namespace 'com.momrelay'
-              compileSdk 34
-              defaultConfig {
-                  applicationId 'com.momrelay'
-                  minSdk 26
-                  targetSdk 34
-                  versionCode 1
-                  versionName "1.0"
-              }
-              buildFeatures { viewBinding true }
-              
-              compileOptions {
-                  sourceCompatibility JavaVersion.VERSION_17
-                  targetCompatibility JavaVersion.VERSION_17
-              }
-              kotlinOptions {
-                  jvmTarget = '17'
-              }
-          }
-          dependencies {
-              implementation 'androidx.core:core-ktx:1.12.0'
-              implementation 'androidx.appcompat:appcompat:1.6.1'
-              implementation 'com.google.android.material:material:1.11.0'
-          }
-          EOF
-
-          # 6. MANIFEST (Android 15 Ready)
+          # 2. MANIFEST
           cat <<'EOF' > app/src/main/AndroidManifest.xml
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android"
@@ -83,7 +33,9 @@ jobs:
               <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
               <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
               <application
-                  android:label="Mom Relay"
+                  android:allowBackup="true"
+                  android:icon="@mipmap/ic_launcher"
+                  android:label="Mom Relay v8"
                   android:theme="@style/Theme.AppCompat.Light.NoActionBar">
                   <activity android:name=".MainActivity" android:exported="true">
                       <intent-filter>
@@ -101,7 +53,8 @@ jobs:
           </manifest>
           EOF
 
-          # 7. MAIN ACTIVITY (Pop-up UI)
+          # 3. MAIN ACTIVITY
+          mkdir -p app/src/main/java/com/momrelay
           cat <<'EOF' > app/src/main/java/com/momrelay/MainActivity.kt
           package com.momrelay
           import android.os.Bundle
@@ -119,23 +72,13 @@ jobs:
           class MainActivity : AppCompatActivity() {
               override fun onCreate(s: Bundle?) {
                   super.onCreate(s)
-                  
                   val l = LinearLayout(this).apply { 
-                      orientation = LinearLayout.VERTICAL
-                      gravity = Gravity.CENTER
-                      setPadding(60,60,60,60)
+                      orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER; setPadding(50,50,50,50)
                       setBackgroundColor(0xFFFFFFFF.toInt())
                   }
-                  val status = TextView(this).apply { 
-                      text = "Status: Idle"
-                      textSize = 18f
-                      gravity = Gravity.CENTER
-                      setPadding(0,0,0,60)
-                  }
-                  val btn = Button(this).apply { text = "CONFIGURE & START" }
-                  
-                  l.addView(status); l.addView(btn)
-                  setContentView(l)
+                  val status = TextView(this).apply { text = "Status: Idle"; textSize=18f; gravity=Gravity.CENTER; setPadding(0,0,0,60) }
+                  val btn = Button(this).apply { text = "CONFIGURE" }
+                  l.addView(status); l.addView(btn); setContentView(l)
                   
                   val prefs = getSharedPreferences("Relay", Context.MODE_PRIVATE)
                   if(prefs.getBoolean("ACTIVE", false)) {
@@ -150,53 +93,40 @@ jobs:
                           stopService(Intent(this, RelayService::class.java))
                           status.text = "Status: Stopped"
                           status.setTextColor(0xFFD32F2F.toInt())
-                          btn.text = "CONFIGURE & START"
+                          btn.text = "CONFIGURE"
                       } else {
                           showDialog(status, btn)
                       }
                   }
-                  checkPerms()
+                  if(!checkPerms()) reqPerms()
               }
 
               private fun showDialog(tv: TextView, btn: Button) {
                   val ctx = this
-                  val layout = LinearLayout(ctx).apply {
-                      orientation = LinearLayout.VERTICAL
-                      setPadding(50, 40, 50, 10)
-                  }
+                  val layout = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; setPadding(50, 40, 50, 10) }
                   val prefs = getSharedPreferences("Relay", Context.MODE_PRIVATE)
-                  val box1 = EditText(ctx).apply { 
-                      hint = "Target Phone" 
-                      setText(prefs.getString("PHONE", ""))
-                      inputType = android.text.InputType.TYPE_CLASS_PHONE
-                  }
-                  val box2 = EditText(ctx).apply { 
-                      hint = "Keywords (Optional)" 
-                      setText(prefs.getString("KEYWORDS", ""))
-                  }
+                  val box1 = EditText(ctx).apply { hint = "Target Phone"; setText(prefs.getString("PHONE", "")); inputType=3 }
+                  val box2 = EditText(ctx).apply { hint = "Keywords"; setText(prefs.getString("KEYWORDS", "")) }
                   layout.addView(box1); layout.addView(box2)
 
-                  AlertDialog.Builder(ctx)
-                      .setTitle("Setup")
-                      .setView(layout)
-                      .setPositiveButton("START") { _, _ ->
-                          val ph = box1.text.toString().trim()
-                          val kw = box2.text.toString().trim()
-                          if (ph.length < 3) return@setPositiveButton
-                          
-                          prefs.edit().putString("PHONE", ph).putString("KEYWORDS", kw).putBoolean("ACTIVE", true).apply()
-                          val it = Intent(ctx, RelayService::class.java)
-                          if (Build.VERSION.SDK_INT >= 26) startForegroundService(it) else startService(it)
-                          
-                          tv.text = "RUNNING\nTo: " + ph
-                          tv.setTextColor(0xFF00C853.toInt())
-                          btn.text = "STOP SERVICE"
-                      }
-                      .setNegativeButton("Cancel", null)
-                      .show()
+                  AlertDialog.Builder(ctx).setTitle("Setup").setView(layout).setPositiveButton("START") { _, _ ->
+                      val ph = box1.text.toString().trim()
+                      val kw = box2.text.toString().trim()
+                      if (ph.length < 3) return@setPositiveButton
+                      prefs.edit().putString("PHONE", ph).putString("KEYWORDS", kw).putBoolean("ACTIVE", true).apply()
+                      val it = Intent(ctx, RelayService::class.java)
+                      if (Build.VERSION.SDK_INT >= 26) startForegroundService(it) else startService(it)
+                      tv.text = "RUNNING\nTo: " + ph; tv.setTextColor(0xFF00C853.toInt()); btn.text = "STOP SERVICE"
+                  }.show()
               }
 
-              private fun checkPerms() {
+              private fun checkPerms(): Boolean {
+                  val p = mutableListOf(Manifest.permission.RECEIVE_SMS, Manifest.permission.SEND_SMS, Manifest.permission.READ_PHONE_STATE)
+                  if (Build.VERSION.SDK_INT >= 33) p.add(Manifest.permission.POST_NOTIFICATIONS)
+                  for(x in p) if(ActivityCompat.checkSelfPermission(this, x) != PackageManager.PERMISSION_GRANTED) return false
+                  return true
+              }
+              private fun reqPerms() {
                   val p = mutableListOf(Manifest.permission.RECEIVE_SMS, Manifest.permission.SEND_SMS, Manifest.permission.READ_PHONE_STATE)
                   if (Build.VERSION.SDK_INT >= 33) p.add(Manifest.permission.POST_NOTIFICATIONS)
                   ActivityCompat.requestPermissions(this, p.toTypedArray(), 101)
@@ -204,7 +134,7 @@ jobs:
           }
           EOF
 
-          # 8. RELAY SERVICE (Crash Fix)
+          # 4. RELAY SERVICE
           cat <<'EOF' > app/src/main/java/com/momrelay/RelayService.kt
           package com.momrelay
           import android.app.*
@@ -221,58 +151,83 @@ jobs:
                       getSystemService(NotificationManager::class.java).createNotificationChannel(c)
                   }
                   val n = NotificationCompat.Builder(this, "Relay").setContentTitle("Mom Relay Active").setSmallIcon(android.R.drawable.ic_dialog_email).build()
-                  if (Build.VERSION.SDK_INT >= 34) {
-                      startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
-                  } else {
-                      startForeground(1, n)
-                  }
+                  if (Build.VERSION.SDK_INT >= 34) startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC) else startForeground(1, n)
                   return START_STICKY
               }
           }
           EOF
 
-          # 9. SMS RECEIVER
+          # 5. SMS RECEIVER (Now with NOTIFICATION FEEDBACK)
           cat <<'EOF' > app/src/main/java/com/momrelay/SmsReceiver.kt
           package com.momrelay
           import android.content.*
           import android.telephony.*
+          import android.app.NotificationManager
+          import androidx.core.app.NotificationCompat
+          
           class SmsReceiver : BroadcastReceiver() {
               override fun onReceive(c: Context, i: Intent) {
                   if (i.action != "android.provider.Telephony.SMS_RECEIVED") return
-                  val p = c.getSharedPreferences("Relay", Context.MODE_PRIVATE)
-                  val t = p.getString("PHONE", "") ?: return
-                  if (t.length < 3) return
-                  val k = p.getString("KEYWORDS", "") ?: ""
                   
-                  val b = i.extras ?: return
-                  val pdus = b.get("pdus") as Array<Any>?
+                  // 1. Show notification to prove we woke up
+                  notify(c, "SMS Detected", "Processing...")
+                  
+                  val p = c.getSharedPreferences("Relay", Context.MODE_PRIVATE)
+                  val target = p.getString("PHONE", "") ?: return
+                  val rawKeys = p.getString("KEYWORDS", "") ?: ""
+                  
+                  val bundle = i.extras ?: return
+                  val pdus = bundle.get("pdus") as Array<Any>?
                   val sms = SmsManager.getDefault()
+                  
                   pdus?.forEach {
-                      val m = SmsMessage.createFromPdu(it as ByteArray, b.getString("format"))
+                      val m = SmsMessage.createFromPdu(it as ByteArray, bundle.getString("format"))
                       val body = m.messageBody ?: ""
-                      if (k.isEmpty() || k.split(",").any { key -> key.isNotBlank() && body.lowercase().contains(key.trim().lowercase()) }) {
-                          try { sms.sendTextMessage(t, null, "Fwd: " + body, null, null) } catch (e: Exception) {}
+                      val sender = m.originatingAddress ?: "?"
+                      
+                      val keys = rawKeys.split(Regex("[,\\s]+")).filter { k -> k.isNotEmpty() }
+                      
+                      // Logic
+                      var shouldSend = false
+                      if (keys.isEmpty()) shouldSend = true
+                      else {
+                          val lowBody = body.lowercase()
+                          for (k in keys) if (lowBody.contains(k.lowercase())) shouldSend = true
+                      }
+                      
+                      if (shouldSend) {
+                          try {
+                              sms.sendTextMessage(target, null, "Fwd $sender: $body", null, null)
+                              notify(c, "Success", "Forwarded to $target")
+                          } catch (e: Exception) {
+                              notify(c, "Failed", e.message ?: "Unknown Error")
+                          }
+                      } else {
+                          notify(c, "Ignored", "Keyword not matched")
                       }
                   }
+              }
+              
+              private fun notify(c: Context, title: String, msg: String) {
+                  val nm = c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                  val b = NotificationCompat.Builder(c, "Relay")
+                      .setSmallIcon(android.R.drawable.ic_dialog_info)
+                      .setContentTitle(title)
+                      .setContentText(msg)
+                      .setPriority(NotificationCompat.PRIORITY_HIGH)
+                  nm.notify(System.currentTimeMillis().toInt(), b.build())
               }
           }
           EOF
 
-          # 10. PROPERTIES
-          echo "org.gradle.jvmargs=-Xmx2048m" > gradle.properties
-          echo "android.useAndroidX=true" >> gradle.properties
-
-      - name: Setup Gradle 8.2
-        uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: '8.2'
+          # 6. GRADLE CONFIG
+          echo "android { namespace 'com.momrelay'; compileSdk 34; defaultConfig { applicationId 'com.momrelay'; minSdk 26; targetSdk 34; versionCode 1; } }" >> app/build.gradle
 
       - name: Build APK
-        run: gradle assembleDebug
+        run: ./gradlew assembleDebug
 
       - uses: actions/upload-artifact@v4
         with:
-          name: MomRelay-GodMode-Final
+          name: MomRelay-Ultimate-v8
           path: app/build/outputs/apk/debug/app-debug.apk
-
-
+          
